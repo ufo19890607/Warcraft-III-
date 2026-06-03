@@ -1,0 +1,517 @@
+﻿STRING 1
+{
+玩家 1
+}
+
+STRING 3
+{
+玩家 2
+}
+
+STRING 4
+{
+|CFFBC02D7UD决战操作训练-入门与精通|R
+}
+
+STRING 5
+{
+1~2
+}
+
+STRING 6
+{
+本图截取EI地图的中间部分为对战场景，重点针对不死族对抗其他种族中后期决战操作进行训练。
+}
+
+STRING 7
+{
+Samadhi & UFO
+}
+
+STRING 20
+{
+|CFFBC02D7UD决战操作训练-入门与精通|R
+}
+
+STRING 21
+{
+             进入游戏后选择对阵双方种族
+             每种对阵共有10关，实际总有160关。
+
+               实用命令：
+               输入"|cf132cd32c|r"重新选择双方种族
+               输入"|cf132cd32s|r"交换双方种族
+               输入"|cf132cd32gg|r"认输进入下一关
+               输入"|cf132cd32ag|r"重新开始当前一关
+               输入"|cf132cd321~10|r"进入相应关卡
+               输入"|cf132cd32easy|r" 入门玩家提升
+               输入"|cf132cd32hard|r" 职业玩家训练
+                                       作者：Samadhi
+                                       修订：UFO
+}
+
+STRING 40
+{
+随机 Random
+}
+
+STRING 41
+{
+人族 Human
+}
+
+STRING 42
+{
+兽族 Orc
+}
+
+STRING 43
+{
+不死族 Undead
+}
+
+STRING 44
+{
+暗夜精灵族 NightElf
+}
+
+STRING 46
+{
+重玩这一对阵
+}
+
+STRING 47
+{
+重新选择对阵
+}
+
+STRING 48
+{
+退出游戏
+}
+
+STRING 50
+{
+玩家1
+}
+
+STRING 51
+{
+玩家2
+}
+
+STRING 67
+{
+Game Over!
+}
+
+STRING 161
+{
+选择你的种族
+}
+
+STRING 163
+{
+选择对手的种族
+}
+
+STRING 175
+{
+随机 Random
+}
+
+STRING 176
+{
+人族 Human
+}
+
+STRING 177
+{
+兽族 Orc
+}
+
+STRING 178
+{
+不死族 Undead
+}
+
+STRING 179
+{
+暗夜精灵族 NightElf
+}
+
+STRING 180
+{
+选择你的种族
+}
+
+STRING 181
+{
+选择对手的种族
+}
+
+STRING 182
+{
+选择你的种族
+}
+
+STRING 183
+{
+选择对手的种族
+}
+
+STRING 184
+{
+选择你的种族
+}
+
+STRING 185
+{
+选择对手的种族
+}
+
+STRING 186
+{
+选择你的种族
+}
+
+STRING 187
+{
+选择对手的种族
+}
+
+STRING 188
+{
+选择你的种族
+}
+
+STRING 189
+{
+选择对手的种族
+}
+
+STRING 190
+{
+选择你的种族
+}
+
+STRING 191
+{
+选择对手的种族
+}
+
+STRING 192
+{
+选择你的种族
+}
+
+STRING 193
+{
+选择对手的种族
+}
+
+STRING 196
+{
+选择你的种族
+}
+
+STRING 197
+{
+选择对手的种族
+}
+
+STRING 198
+{
+困难模式
+}
+
+STRING 199
+{
+简单模式
+}
+
+STRING 202
+{
+你的对手还没准备好！
+}
+
+STRING 203
+{
+你的对手还没准备好！
+}
+
+STRING 206
+{
+你还没准备好！输入"Ready"
+}
+
+STRING 207
+{
+你还没准备好！输入"Ready"
+}
+
+STRING 215
+{
+离战斗开始时间：
+}
+
+STRING 216
+{
+离战斗开始时间：
+}
+
+STRING 217
+{
+困难模式
+}
+
+STRING 218
+{
+简单模式
+}
+
+STRING 252
+// 单位: u000 (选择第3英雄), Name (名字)
+{
+选择第3英雄
+}
+
+STRING 255
+// 单位: e000 (AntiMagic), Name (名字)
+{
+AntiMagic
+}
+
+STRING 256
+// 技能: A002 (自爆), EditorSuffix (编辑器后缀)
+{
+(wisp)
+}
+
+STRING 257
+// 单位: u000 (选择第3英雄), EditorSuffix (名字 - 编辑器后缀)
+{
+ID:C3R5R6
+}
+
+STRING 260
+// 单位: o000 (选择第3英雄), Name (名字)
+{
+选择第3英雄
+}
+
+STRING 261
+// 单位: o000 (选择第3英雄), EditorSuffix (名字 - 编辑器后缀)
+{
+ID:C2R7
+}
+
+STRING 262
+// 单位: u003 (选择第3英雄), Name (名字)
+{
+选择第3英雄
+}
+
+STRING 264
+// 单位: u008 (选择第3英雄), EditorSuffix (名字 - 编辑器后缀)
+{
+ID:C5R10C6R1
+}
+
+STRING 265
+// 单位: u004 (选择第3英雄), Name (名字)
+{
+选择第3英雄
+}
+
+STRING 266
+// 单位: u004 (选择第3英雄), EditorSuffix (名字 - 编辑器后缀)
+{
+ID:C6R2
+}
+
+STRING 267
+{
+查看任务(|cffffcc00F9|r)了解更多信息
+}
+
+STRING 268
+{
+|cffffcc00决战训练图|r
+}
+
+STRING 269
+{
+<Samadhi Maps>
+}
+
+STRING 270
+{
+进入游戏后选择对阵双方种族，每种对阵共有10关
+}
+
+STRING 271
+{
+实用命令：
+}
+
+STRING 272
+{
+输入"|cff32cd32c|r"重新选择双方种族
+}
+
+STRING 273
+{
+输入"|cff32cd32s|r"交换双方种族
+}
+
+STRING 274
+{
+输入"|cff32cd32gg|r"认输进入下一关
+}
+
+STRING 275
+{
+输入"|cff32cd32ag|r"重新开始当前一关
+}
+
+STRING 276
+{
+|cffffcc00说明|r
+}
+
+STRING 277
+{
+我的其它地图在我的博客[http://blog.sina.com.cn/samadhistormwind]上找到。
+有bug或者建议: QQ:371119488 
+}
+
+STRING 278
+{
+结束准备时间命令
+}
+
+STRING 279
+{
+每关开始前可以输入 "g"  提前结束准备时间。
+}
+
+STRING 290
+{
+想体验困难难度下的疯狂电脑 请输入"hard"
+}
+
+STRING 291
+{
+输入"|cff32cd321~10|r"进入相应关卡
+}
+
+STRING 292
+{
+输入"|cff32cd32hard|r""|cff32cd32easy|r"改变游戏难度
+}
+
+STRING 293
+// 单位: u007 (选择第3英雄), Name (名字)
+{
+选择第3英雄
+}
+
+STRING 298
+// 单位: e002 (选择第2英雄), EditorSuffix (名字 - 编辑器后缀)
+{
+C10R7R8
+}
+
+STRING 299
+// 单位: u007 (选择第3英雄), EditorSuffix (名字 - 编辑器后缀)
+{
+ID:C9R5
+}
+
+STRING 300
+// 单位: e002 (选择第2英雄), Name (名字)
+{
+选择第2英雄
+}
+
+STRING 302
+{
+简单难度
+}
+
+STRING 303
+{
+简单难度下，电脑和玩家拥有相当的兵力。
+}
+
+STRING 304
+{
+困难难度
+}
+
+STRING 305
+{
+困难难度下，电脑拥有比玩家多5~20左右的人口，具有较高的挑战性。
+}
+
+STRING 308
+{
+两人对战
+}
+
+STRING 309
+{
+本地图支持两人对战，并注意：在每关开始前，必须两人都输入"go"或"g"等命令后才能开始对战。
+}
+
+STRING 310
+{
+可选英雄
+}
+
+STRING 311
+{
+部分关卡，玩家可自由选择第3英雄，电脑则会使用随机英雄。
+}
+
+STRING 312
+{
+尘土之影
+}
+
+STRING 313
+{
+遇到隐形单位无法过关时，可以输入"Dust"或"D"在地图中央产生一个尘土之影，该命令只能在单机模式下有，并且在开战30秒后才可用。
+}
+
+STRING 314
+// 单位: u003 (选择第3英雄), EditorSuffix (名字 - 编辑器后缀)
+{
+ID:C5R5
+}
+
+STRING 315
+// 单位: u008 (选择第3英雄), Name (名字)
+{
+选择第3英雄
+}
+
+STRING 316
+// 单位: u006 (食尸鬼), Ubertip (提示工具 - 扩展)
+{
+基本战斗单位和木材采集者。笨狗一条，只可学习食尸。|n|n|cffffcc00能攻击地面单位和树木。|r
+}
+
+STRING 317
+// 单位: U009 (亡灵骑士), Name (名字)
+{
+亡灵骑士
+}
+
+STRING 318
+// 单位: O001 (训练先知), Name (名字)
+{
+训练先知
+}
+
