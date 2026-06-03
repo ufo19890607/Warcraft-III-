@@ -500,7 +500,7 @@ endfunction"""
     GUARD_NEW = (
         "function Trig_Computer2Combat_AI_Actions takes nothing returns nothing" + nl
         + "    // [CREEP V39] Skip combat AI dispatch when creep control is active in Round 1" + nl
-        + "    if udg_RoundNo == 1 and (udg_aiml_CreepMode >= 1 or udg_aiml_Round1Mode == 1) then" + nl
+        + "    if udg_RoundNo == 1 and udg_aiml_CreepMode >= 1 then" + nl
         + "        return" + nl
         + "    endif"
     )
@@ -533,7 +533,7 @@ endfunction"""
         src = src.replace(
             GUARD1_OLD,
             "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing" + nl
-            + "    if udg_RoundNo == 1 and (udg_aiml_CreepMode >= 1 or udg_aiml_Round1Mode == 1) then" + nl
+            + "    if udg_RoundNo == 1 and udg_aiml_CreepMode >= 1 then" + nl
             + "        return" + nl
             + "    endif",
         )
