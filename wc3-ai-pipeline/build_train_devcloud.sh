@@ -1,5 +1,6 @@
 #!/bin/bash
 # build_train_devcloud.sh - 训练图一键注入流水线 (devcloud 本地版)
+#
 # 用法: ./build_train_devcloud.sh <input.w3x> <output-prefix>
 #
 # 示例:
@@ -11,10 +12,10 @@
 #   <output-prefix>-1.27.w3x
 #
 # 注入顺序（5项功能）:
-#   [2] TC战争践踏 + 齐射       inject_aiml_v2.py
-#   [3] 集火后撤                inject_focus_retreat.py
-#   [4] 补刀 / 防补刀           inject_creep_control.py
-#   [5] 围杀                    inject_surround.py
+#   [2] TC战争践踏 + 齐射       inject_tc_stomp_salvo.py
+#   [3] 集火后撤                inject_ai_focus_retreat.py
+#   [4] 补刀 / 防补刀           inject_ai_creep_control.py
+#   [5] 围杀                    inject_ai_surround.py
 #   [6] 英雄技能修复（可选）     inject_hero_skills.py
 
 set -euo pipefail
@@ -26,10 +27,10 @@ PJASS="$SCRIPT_DIR/tools/pjass"
 COMMON_J="$SCRIPT_DIR/refs/common-127-clean.j"
 BLIZZARD_J="$SCRIPT_DIR/refs/Blizzard.j"
 
-INJECTOR_V2="$SCRIPT_DIR/inject_aiml_v2.py"
-INJECTOR_FOCUS="$SCRIPT_DIR/inject_focus_retreat.py"
-INJECTOR_CREEP="$SCRIPT_DIR/inject_creep_control.py"
-INJECTOR_SURROUND="$SCRIPT_DIR/inject_surround.py"
+INJECTOR_TC="$SCRIPT_DIR/inject_tc_stomp_salvo.py"
+INJECTOR_FOCUS="$SCRIPT_DIR/inject_ai_focus_retreat.py"
+INJECTOR_CREEP="$SCRIPT_DIR/inject_ai_creep_control.py"
+INJECTOR_SURROUND="$SCRIPT_DIR/inject_ai_surround.py"
 INJECTOR_HERO="$SCRIPT_DIR/inject_hero_skills.py"
 
 if [ $# -lt 2 ]; then
@@ -46,7 +47,7 @@ OUT_REFORGED="${OUT_PREFIX}-Reforged.w3x"
 OUT_127="${OUT_PREFIX}-1.27.w3x"
 
 # 检查必要工具和脚本
-for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_V2" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND"; do
+for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_TC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND"; do
     if [ ! -e "$f" ]; then
         echo "ERROR: 缺少: $f"
         exit 1
@@ -75,7 +76,7 @@ if grep -q "Trig_AIML_SalvoForPlayer" "$J"; then
     echo "[2/7] TC+齐射已存在，跳过"
 else
     echo "[2/7] 注入 TC战争践踏 + 齐射..."
-    python3 "$INJECTOR_V2" "$J" "$J"
+    python3 "$INJECTOR_TC" "$J" "$J"
 fi
 
 # [3] 集火后撤
