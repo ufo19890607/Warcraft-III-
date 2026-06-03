@@ -102,15 +102,13 @@ pattern3 = re.compile(
 
 ---
 
-## 坑 7：guard 条件包含 Round1Mode 导致 HVU 第一关 AI 冻结
+## 坑 7：Round1Mode 跨局不重置导致 HVU 第一关 AI 冻结
 
 **现象**：HVU 第一关冷却时间到了但 AI 不出兵、不攻击。
 
-**根因**：guard 条件是 `CreepMode >= 1 or Round1Mode == 1`，而 `Round1Mode` 是 Surround 模式开关——跨局不重置时 Round1Mode 仍然是 1，导致 HVU 第一关母调度被永久封死，CreepControl 也没有野怪可打，AI 彻底瘫痪。
+**根因**：guard 条件是 `CreepMode >= 1 or Round1Mode == 1`。`Round1Mode` 是围杀模式开关，围杀激活时阻塞 Combat AI 是**正确行为**（防止 attack 命令打乱围杀队形）。但 Round1Mode 跨局不重置，上一局用了 `-surround` 后，下一局第一关 Round1Mode 仍然是 1，导致 Combat AI 永久被封、CreepControl 没野怪可打，AI 彻底瘫痪。
 
-**修复**：
-1. guard 条件改为只看 `CreepMode >= 1`（去掉 Round1Mode）
-2. 在 `// Variable Reset` 块里注入5行重置，每关开始时清零所有 AI 状态：
+**修复**：guard 条件**保持不变**（两个条件都需要），只在 `// Variable Reset` 块里注入5行重置：
 ```jass
 set udg_aiml_Round1Mode = 0
 set udg_aiml_CreepMode = 0
@@ -118,6 +116,8 @@ set udg_aiml_SurroundStillTicks = 0
 set udg_aiml_SurroundAttacking = false
 set udg_aiml_SurroundTarget = null
 ```
+
+**注意**：`Round1Mode == 1` 在 guard 里是必须的，不能去掉。
 
 ---
 
