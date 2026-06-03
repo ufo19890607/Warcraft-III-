@@ -510,6 +510,20 @@ endfunction"""
     else:
         print("WARN: Computer2Combat_AI_Actions not found, skipping guard patch")
 
+    # 4b) Guard Computer1Combat_AI_Actions in Round1
+    GUARD1_OLD = "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing"
+    if GUARD1_OLD in src:
+        src = src.replace(
+            GUARD1_OLD,
+            "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing" + nl
+            + "    if udg_RoundNo == 1 and (udg_aiml_CreepMode >= 1 or udg_aiml_Round1Mode == 1) then" + nl
+            + "        return" + nl
+            + "    endif",
+        )
+        print("[V39] patched Computer1Combat_AI_Actions guard")
+    else:
+        print("WARN: Computer1Combat_AI_Actions not found, skipping guard patch")
+
     # ------------------------------------------------------------------ #
     # 5) Disable original neutral-attack triggers
     # ------------------------------------------------------------------ #
