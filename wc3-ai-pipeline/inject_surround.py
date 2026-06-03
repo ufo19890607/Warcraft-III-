@@ -316,11 +316,21 @@ endfunction
     if "udg_aiml_Round1Mode == 1" in src:
         print("[V39] SalvoTick Round1Mode guard already present, skipping patch")
     else:
-        # Find the SalvoTick function body and prepend the guard
+        # Find the SalvoTick function body and prepend the guard AFTER all local declarations
+        # (JASS requires all locals to come before any statements)
         start = src.find("function Trig_AIML_SalvoTick takes nothing returns nothing")
         if start != -1:
-            # Find the first line of the body (after function header)
-            body_start = src.index(nl, start) + len(nl)
+            pos = src.index(nl, start) + len(nl)
+            # Skip all leading local/set/call lines until we find a non-local line
+            while True:
+                line_end = src.find(nl, pos)
+                if line_end == -1:
+                    break
+                line = src[pos:line_end].strip()
+                if line.startswith("local "):
+                    pos = line_end + len(nl)
+                else:
+                    break
             guard = (
                 "    // [SURROUND V39] Round 1 surround mode" + nl
                 + "    if udg_RoundNo == 1 and udg_aiml_Round1Mode == 1 then" + nl
@@ -329,8 +339,8 @@ endfunction
                 + "        return" + nl
                 + "    endif" + nl
             )
-            src = src[:body_start] + guard + src[body_start:]
-            print("[V39] patched SalvoTick with Round1Mode surround guard")
+            src = src[:pos] + guard + src[pos:]
+            print("[V39] patched SalvoTick with Round1Mode surround guard (after locals)")
 
     # ------------------------------------------------------------------ #
     # 4) Call SurroundInit from map init function (Trig_AIML_DebugInit or
