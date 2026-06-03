@@ -41,7 +41,7 @@ def main():
     marker = "boolean udg_aiml_CreepControlEnabled = true"
     idx = src.find(marker)
     if idx == -1:
-        marker = "boolean udg_aiml_DebugMode = false"
+        marker = "boolean udg_aiml_DebugMode"
         idx = src.find(marker)
     if idx == -1:
         print("ERROR: cannot find globals insertion point for focus retreat")

@@ -142,7 +142,7 @@ echo "打包 Reforged..."
 "$STORMPATCH" "$INPUT_W3X" "$OUT_REFORGED" "war3map.j" "$J" > /dev/null
 echo "    $OUT_REFORGED ($(du -h "$OUT_REFORGED" | cut -f1))"
 
-# 打包 1.27（完整 reforged→1.27 降级）
+# 打包 1.27（完整 reforged→1.27 降级，用验证过的 repack + hm3w_header.bin）
 echo "打包 1.27..."
 DG_DIR="$TMP_DIR/downgrade"
 mkdir -p "$DG_DIR"
@@ -150,30 +150,26 @@ mkdir -p "$DG_DIR"
 # Step 1: 解包 reforged .w3x
 "$STORMTOOL" extract "$INPUT_W3X" "$DG_DIR" > /dev/null
 
-# Step 2: 替换 war3map.j（注入后版本，先做 BlzCreateUnitWithSkin 替换）
+# Step 2: 删除 reforged-only 文件
+rm -f "$DG_DIR/conversation.json"
+rm -f "$DG_DIR/war3mapSkin.w3a" "$DG_DIR/war3mapSkin.w3h" "$DG_DIR/war3mapSkin.w3q" "$DG_DIR/war3mapSkin.w3u"
+find "$DG_DIR" -maxdepth 1 -name "Scripts" -type d -exec rm -rf {} + 2>/dev/null || true
+
+# Step 3: 降级各数据文件
+[ -f "$DG_DIR/war3map.doo" ]      && python3 "$DOO_DG"   "$DG_DIR/war3map.doo"      "$DG_DIR/war3map.doo.tmp"      && mv "$DG_DIR/war3map.doo.tmp"      "$DG_DIR/war3map.doo"
+[ -f "$DG_DIR/war3mapUnits.doo" ] && python3 "$UNITS_DG" "$DG_DIR/war3mapUnits.doo" "$DG_DIR/war3mapUnits.doo.tmp" && mv "$DG_DIR/war3mapUnits.doo.tmp" "$DG_DIR/war3mapUnits.doo"
+[ -f "$DG_DIR/war3map.w3i" ]      && python3 "$W3I_DG"   "$DG_DIR/war3map.w3i"      "$DG_DIR/war3map.w3i.tmp"      && mv "$DG_DIR/war3map.w3i.tmp"      "$DG_DIR/war3map.w3i"
+
+# Step 4: 替换 war3map.j（注入后版本，先做 BlzCreateUnitWithSkin 替换）
 if grep -q 'BlzCreateUnitWithSkin' "$J"; then
-    sed 's/BlzCreateUnitWithSkin(\([^,]*\),\([^,]*\),\([^,]*\),\([^,]*\),[^)]*)/CreateUnit(\1,\2,\3,\4)/g' "$J" > "$DG_DIR/war3map.j"
+    sed 's/BlzCreateUnitWithSkin(\([^,]*\),\([^,]*\),\([^,]*\),\([^,]*\),\([^,]*\),[^)]*)/CreateUnit(\1,\2,\3,\4,\5)/g' "$J" > "$DG_DIR/war3map.j"
 else
     cp "$J" "$DG_DIR/war3map.j"
 fi
 
-# Step 3: 删除 reforged-only 文件
-rm -f "$DG_DIR/conversation.json" \
-      "$DG_DIR/war3mapSkin.w3a" "$DG_DIR/war3mapSkin.w3h" \
-      "$DG_DIR/war3mapSkin.w3q" "$DG_DIR/war3mapSkin.w3u"
-
-# Step 4: 降级各数据文件
-[ -f "$DG_DIR/war3map.doo" ]      && python3 "$DOO_DG"   "$DG_DIR/war3map.doo"      "$DG_DIR/war3map.doo.tmp"      && mv "$DG_DIR/war3map.doo.tmp"      "$DG_DIR/war3map.doo"
-[ -f "$DG_DIR/war3mapUnits.doo" ] && python3 "$UNITS_DG" "$DG_DIR/war3mapUnits.doo" "$DG_DIR/war3mapUnits.doo.tmp" && mv "$DG_DIR/war3mapUnits.doo.tmp" "$DG_DIR/war3mapUnits.doo"
-[ -f "$DG_DIR/war3map.w3i" ]      && python3 "$W3I_DG"   "$DG_DIR/war3map.w3i"      "$DG_DIR/war3map.w3i.tmp"      && mv "$DG_DIR/war3map.w3i.tmp"      "$DG_DIR/war3map.w3i"
-[ -f "$DG_DIR/war3map.w3e" ]      && python3 "$W3E_DG"   "$DG_DIR/war3map.w3e"      "$DG_DIR/war3map.w3e.tmp"      && mv "$DG_DIR/war3map.w3e.tmp"      "$DG_DIR/war3map.w3e"
-for ext in w3a w3h w3q w3u; do
-    [ -f "$DG_DIR/war3map.$ext" ] && python3 "$W3OBJ_DG" "$DG_DIR/war3map.$ext" "$DG_DIR/war3map.$ext.tmp" && mv "$DG_DIR/war3map.$ext.tmp" "$DG_DIR/war3map.$ext"
-done
-
-# Step 5: repack with 1.27 header source
+# Step 5: repack with hm3w_header.bin（验证过的方式）
 "$REPACK" "$DG_DIR" "$HEADER_BIN" "$OUT_127"
-echo "    $OUT_127 ($(du -h "$OUT_127" | cut -f1))"
+echo "    $OUT_127 ($(du -h $OUT_127 | cut -f1))"
 
 echo ""
 echo "=========================================="

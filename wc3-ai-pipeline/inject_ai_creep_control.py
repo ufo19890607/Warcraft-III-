@@ -45,7 +45,7 @@ def main():
     real    udg_aiml_CreepMapBotY = -6000.00
     real    udg_aiml_CreepLowHPThreshold = 100.00"""
 
-    marker = "boolean udg_aiml_DebugMode = false"
+    marker = "boolean udg_aiml_DebugMode"
     idx = src.find(marker)
     if idx == -1:
         marker = "integer udg_aiml_DebugKiteDir = 0"
