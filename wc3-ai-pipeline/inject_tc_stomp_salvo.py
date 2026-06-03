@@ -80,6 +80,7 @@ def build_is_ranged_troop():
 # ---- Globals ----
 AIML_GLOBALS = """    // [AIML] shared globals
     boolean udg_aiml_DebugMode = false
+    unit    udg_aiml_LastFireTarget = null
     group   udg_aiml_TempGroup = null
     unit    udg_aiml_StompCaster = null
     integer udg_aiml_StompMinEnemies = 2
@@ -392,6 +393,10 @@ function Trig_AIML_SalvoForPlayer takes player p, player ep, integer focusSlot r
     set picked = Trig_AIML_PickSalvoTarget()
     if picked == null then
         return
+    endif
+    if udg_aiml_DebugMode and picked != udg_aiml_LastFireTarget then
+        call DisplayTextToForce(GetPlayersAll(), "[AIML] FIRE >> " + GetUnitName(picked) + " (HP:" + I2S(R2I(GetUnitStateSwap(UNIT_STATE_LIFE, picked))) + ")")
+        set udg_aiml_LastFireTarget = picked
     endif
     if focusSlot == 1 then
         set udg_aiml_FocusTarget1 = picked
