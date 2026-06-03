@@ -449,6 +449,16 @@ def inject(in_path, out_path):
             + r'endfunction'
         )
         matches = list(pattern2.finditer(src))
+    if not matches:
+        # pattern3: GetAttackedUnitBJ() form
+        pattern3 = re.compile(
+            r'function (Trig_Computer\d+Combat_AI_Func\d+A) takes nothing returns nothing'
+            + re.escape(nl)
+            + r'(\s*call IssueImmediateOrderBJ\(\s*GetAttackedUnitBJ\(\),\s*"stomp"\s*\))'
+            + re.escape(nl)
+            + r'endfunction'
+        )
+        matches = list(pattern3.finditer(src))
 
     for m in reversed(matches):
         fname = m.group(1)
