@@ -510,6 +510,23 @@ endfunction"""
     else:
         print("WARN: Computer2Combat_AI_Actions not found, skipping guard patch")
 
+    # 4c) Inject round-start state reset into Variable Reset block
+    RESET_MARKER = "// Variable Reset"
+    RESET_INJECT = (
+        "// Variable Reset" + nl
+        + "    // [AIML V39] Reset AI mode state on each round start" + nl
+        + "    set udg_aiml_Round1Mode = 0" + nl
+        + "    set udg_aiml_CreepMode = 0" + nl
+        + "    set udg_aiml_SurroundStillTicks = 0" + nl
+        + "    set udg_aiml_SurroundAttacking = false" + nl
+        + "    set udg_aiml_SurroundTarget = null"
+    )
+    if RESET_MARKER in src:
+        src = src.replace(RESET_MARKER, RESET_INJECT, 1)
+        print("[V39] injected round-start state reset into Variable Reset")
+    else:
+        print("WARN: Variable Reset marker not found, skipping state reset injection")
+
     # 4b) Guard Computer1Combat_AI_Actions in Round1
     GUARD1_OLD = "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing"
     if GUARD1_OLD in src:
