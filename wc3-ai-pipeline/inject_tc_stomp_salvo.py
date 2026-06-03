@@ -79,7 +79,7 @@ def build_is_ranged_troop():
 
 # ---- Globals ----
 AIML_GLOBALS = """    // [AIML] shared globals
-    boolean udg_aiml_DebugMode = true
+    boolean udg_aiml_DebugMode = false
     group   udg_aiml_TempGroup = null
     unit    udg_aiml_StompCaster = null
     integer udg_aiml_StompMinEnemies = 2

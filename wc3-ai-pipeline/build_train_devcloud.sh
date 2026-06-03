@@ -159,6 +159,9 @@ find "$DG_DIR" -maxdepth 1 -name "Scripts" -type d -exec rm -rf {} + 2>/dev/null
 [ -f "$DG_DIR/war3map.doo" ]      && python3 "$DOO_DG"   "$DG_DIR/war3map.doo"      "$DG_DIR/war3map.doo.tmp"      && mv "$DG_DIR/war3map.doo.tmp"      "$DG_DIR/war3map.doo"
 [ -f "$DG_DIR/war3mapUnits.doo" ] && python3 "$UNITS_DG" "$DG_DIR/war3mapUnits.doo" "$DG_DIR/war3mapUnits.doo.tmp" && mv "$DG_DIR/war3mapUnits.doo.tmp" "$DG_DIR/war3mapUnits.doo"
 [ -f "$DG_DIR/war3map.w3i" ]      && python3 "$W3I_DG"   "$DG_DIR/war3map.w3i"      "$DG_DIR/war3map.w3i.tmp"      && mv "$DG_DIR/war3map.w3i.tmp"      "$DG_DIR/war3map.w3i"
+for _ext in w3a w3h w3q w3u; do
+    [ -f "$DG_DIR/war3map.$_ext" ] && python3 "$W3OBJ_DG" "$DG_DIR/war3map.$_ext" "$DG_DIR/war3map.$_ext.tmp" && mv "$DG_DIR/war3map.$_ext.tmp" "$DG_DIR/war3map.$_ext"
+done
 
 # Step 4: 替换 war3map.j（注入后版本，先做 BlzCreateUnitWithSkin 替换）
 if grep -q 'BlzCreateUnitWithSkin' "$J"; then
