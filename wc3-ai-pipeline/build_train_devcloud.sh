@@ -14,8 +14,8 @@
 # 注入顺序（5项功能）:
 #   [2] TC战争践踏 + 齐射       inject_tc_stomp_salvo.py
 #   [3] 集火后撤                inject_ai_focus_retreat.py
-#   [4] 补刀 / 防补刀           inject_ai_creep_control.py
-#   [5] 围杀                    inject_ai_surround.py
+#   [4] 围杀                    inject_ai_surround.py
+#   [5] 补刀(重写SalvoTick)     inject_ai_creep_control.py
 #   [6] 英雄技能修复（可选）     inject_hero_skills.py
 
 set -euo pipefail
@@ -72,31 +72,31 @@ J="$TMP_DIR/war3map.j"
 echo "    $(wc -l < "$J") 行"
 
 # [2] TC战争践踏 + 齐射
-if grep -q "Trig_AIML_SalvoForPlayer" "$J"; then
+if grep -q "function Trig_AIML_SalvoForPlayer" "$J"; then
     echo "[2/7] TC+齐射已存在，跳过"
 else
     echo "[2/7] 注入 TC战争践踏 + 齐射..."
     python3 "$INJECTOR_TC" "$J" "$J"
 fi
 
-# [3] 集火后撤
-if grep -q "Trig_AIML_FocusRetreatForPlayer" "$J"; then
+# [3] 集火后撤（函数注入，SalvoTick 由 creep_control 统一重写）
+if grep -q "function Trig_AIML_FocusRetreatForPlayer" "$J"; then
     echo "[3/7] 集火后撤已存在，跳过"
 else
     echo "[3/7] 注入集火后撤..."
     python3 "$INJECTOR_FOCUS" "$J"
 fi
 
-# [4] 补刀 / 防补刀
-if grep -q "Trig_AIML_CreepControlForPlayer" "$J"; then
+# [4] 补刀 / 防补刀（重写 SalvoTick，必须在围杀之前）
+if grep -q "function Trig_AIML_CreepControlForPlayer" "$J"; then
     echo "[4/7] 补刀已存在，跳过"
 else
     echo "[4/7] 注入补刀 / 防补刀..."
     python3 "$INJECTOR_CREEP" "$J"
 fi
 
-# [5] 围杀
-if grep -q "Trig_AIML_SurroundTick" "$J"; then
+# [5] 围杀（依赖 CreepControlForPlayer，必须在补刀之后）
+if grep -q "function Trig_AIML_SurroundTick" "$J"; then
     echo "[5/7] 围杀已存在，跳过"
 else
     echo "[5/7] 注入围杀..."
@@ -105,7 +105,7 @@ fi
 
 # [6] 英雄技能修复（可选）
 if [ -f "$INJECTOR_HERO" ]; then
-    if grep -q "Trig_AIML_HeroSkillInit" "$J"; then
+    if grep -q "function Trig_AIML_HeroSkillInit" "$J"; then
         echo "[6/7] 英雄技能已存在，跳过"
     else
         echo "[6/7] 注入英雄技能修复..."

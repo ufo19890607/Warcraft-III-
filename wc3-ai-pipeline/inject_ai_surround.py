@@ -42,7 +42,7 @@ def main():
     # ------------------------------------------------------------------ #
     # Guard: skip if already injected
     # ------------------------------------------------------------------ #
-    if "Trig_AIML_SurroundTick" in src:
+    if "function Trig_AIML_SurroundTick" in src:
         print("[V39] Surround already injected, skipping")
         return
 

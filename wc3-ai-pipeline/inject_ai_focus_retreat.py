@@ -381,22 +381,9 @@ endfunction
     # We insert focus retreat AFTER creep lines but BEFORE the if-not-creep salvo calls.
     # Focus retreat doesn't block salvo — it runs independently (one-shot retreat for focused units).
 
-    hook_before = "    // Only run normal salvo if creep control didn't take over for that player"
-    idx4 = src.find(hook_before)
-    if idx4 == -1:
-        # Try alternate: find "if not creep0 then"
-        hook_before = "    if not creep0 then"
-        idx4 = src.find(hook_before)
-    if idx4 == -1:
-        print("ERROR: cannot find SalvoTick hook point for focus retreat")
-        sys.exit(1)
-
-    focus_hook = """    // [FOCUS V35] Check for focused units (runs regardless of creep control)
-    call Trig_AIML_FocusRetreatForPlayer(Player(0), Player(1))
-    call Trig_AIML_FocusRetreatForPlayer(Player(1), Player(0))
-"""
-    src = src[:idx4] + focus_hook.replace("\n", nl) + src[idx4:]
-    print("[FOCUS V35] hooked FocusRetreatForPlayer into SalvoTick")
+    # SalvoTick hook is managed by inject_ai_creep_control.py which calls FocusRetreatForPlayer directly
+    # No hook needed here
+    print("[FOCUS V35] functions injected; SalvoTick managed by creep_control")
 
     # --- 5) Initialize hashtable in SalvoInit ---
     init_marker = "set udg_aiml_SalvoEnemyG = CreateGroup()"
