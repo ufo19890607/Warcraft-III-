@@ -52,6 +52,7 @@ def main():
     SURROUND_GLOBALS = """    // [SURROUND V39] Encircle/Surround system globals
     integer udg_aiml_Round1Mode = 0
     integer udg_aiml_Round1Pref = 1  // default ON: auto-enable creep mode in Round 1
+    integer udg_aiml_SurroundFallbackPrinted = 0
     unit    udg_aiml_SurroundTarget = null
     real    udg_aiml_SurroundTargetX = 0.0
     real    udg_aiml_SurroundTargetY = 0.0
@@ -221,8 +222,9 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     call DestroyGroup(g)
     set g = null
     if unitCount < 8 then
-        if udg_aiml_DebugMode then
+        if udg_aiml_DebugMode and udg_aiml_SurroundFallbackPrinted == 0 then
             call DisplayTextToForce(GetPlayersAll(), "[SURROUND] unit count=" + I2S(unitCount) + " <8, fallback to creep")
+            set udg_aiml_SurroundFallbackPrinted = 1
         endif
         call Trig_AIML_CreepControlForPlayer(p, ep)
         set udg_aiml_CreepMode = 0
@@ -257,7 +259,7 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     endif
     // Phase 2 check
     set udg_aiml_SurroundPhase2 = Trig_AIML_SurroundQuadrantCheck(p, tx, ty, 800.0)
-    if udg_aiml_DebugMode then
+    if udg_aiml_DebugMode and udg_RoundNo == 1 then
         if udg_aiml_SurroundPhase2 then
             call DisplayTextToForce(GetPlayersAll(), "[SURROUND] Phase 2 SQUEEZE on " + GetUnitName(udg_aiml_SurroundTarget))
         else

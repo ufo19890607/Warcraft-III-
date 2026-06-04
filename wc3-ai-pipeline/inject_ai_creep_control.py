@@ -523,7 +523,8 @@ endfunction"""
         + "    set udg_aiml_CreepMode = 0" + nl
         + "    set udg_aiml_SurroundStillTicks = 0" + nl
         + "    set udg_aiml_SurroundAttacking = false" + nl
-        + "    set udg_aiml_SurroundTarget = null"
+        + "    set udg_aiml_SurroundTarget = null" + nl
+        + "    set udg_aiml_SurroundFallbackPrinted = 0"
     )
     if RESET_MARKER in src:
         src = src.replace(RESET_MARKER, RESET_INJECT, 1)

@@ -394,7 +394,7 @@ function Trig_AIML_SalvoForPlayer takes player p, player ep, integer focusSlot r
     if picked == null then
         return
     endif
-    if udg_aiml_DebugMode and picked != udg_aiml_LastFireTarget then
+    if udg_aiml_DebugMode and picked != udg_aiml_LastFireTarget and udg_RoundNo != 1 then
         call DisplayTextToForce(GetPlayersAll(), "[AIML] FIRE >> " + GetUnitName(picked) + " (HP:" + I2S(R2I(GetUnitStateSwap(UNIT_STATE_LIFE, picked))) + ")")
         set udg_aiml_LastFireTarget = picked
     endif
