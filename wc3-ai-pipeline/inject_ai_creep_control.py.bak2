@@ -394,7 +394,7 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
         call ForGroup(armyG, function Trig_AIML_CreepAllInCB)
         call DestroyGroup(armyG)
         set armyG = null
-        if udg_aiml_DebugMode and udg_RoundNo == 1 then
+        if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "[CREEP] ALL-IN HP=" + I2S(R2I(creepHP)))
         endif
         set hero = null
@@ -412,7 +412,7 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
             call ForGroup(armyG, function Trig_AIML_CreepAllInCB)
             call DestroyGroup(armyG)
             set armyG = null
-            if udg_aiml_DebugMode and udg_RoundNo == 1 then
+            if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "[CREEP] DK_FAR ALLIN HP=" + I2S(R2I(creepHP)))
             endif
             set hero = null
@@ -423,7 +423,7 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
             call ForGroup(armyG, function Trig_AIML_CreepSurroundCB)
             call DestroyGroup(armyG)
             set armyG = null
-            if udg_aiml_DebugMode and udg_RoundNo == 1 then
+            if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "[CREEP] DK_CLOSE SURROUND HP=" + I2S(R2I(creepHP)))
             endif
             set hero = null
@@ -435,7 +435,7 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
         call ForGroup(armyG, function Trig_AIML_CreepAllInCB)
         call DestroyGroup(armyG)
         set armyG = null
-        if udg_aiml_DebugMode and udg_RoundNo == 1 then
+        if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "[CREEP] NO_DK_ATK HP=" + I2S(R2I(creepHP)))
         endif
         set hero = null
@@ -534,8 +534,7 @@ endfunction"""
         + "    set udg_aiml_CreepMode = 0" + nl
         + "    set udg_aiml_SurroundStillTicks = 0" + nl
         + "    set udg_aiml_SurroundAttacking = false" + nl
-        + "    set udg_aiml_SurroundTarget = null" + nl
-        + "    set udg_aiml_SurroundFallbackPrinted = false"
+        + "    set udg_aiml_SurroundTarget = null"
     )
     if RESET_MARKER in src:
         src = src.replace(RESET_MARKER, RESET_INJECT, 1)

@@ -394,7 +394,7 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
         call ForGroup(armyG, function Trig_AIML_CreepAllInCB)
         call DestroyGroup(armyG)
         set armyG = null
-        if udg_aiml_DebugMode and udg_RoundNo == 1 then
+        if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "[CREEP] ALL-IN HP=" + I2S(R2I(creepHP)))
         endif
         set hero = null
@@ -412,7 +412,7 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
             call ForGroup(armyG, function Trig_AIML_CreepAllInCB)
             call DestroyGroup(armyG)
             set armyG = null
-            if udg_aiml_DebugMode and udg_RoundNo == 1 then
+            if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "[CREEP] DK_FAR ALLIN HP=" + I2S(R2I(creepHP)))
             endif
             set hero = null
@@ -423,7 +423,7 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
             call ForGroup(armyG, function Trig_AIML_CreepSurroundCB)
             call DestroyGroup(armyG)
             set armyG = null
-            if udg_aiml_DebugMode and udg_RoundNo == 1 then
+            if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "[CREEP] DK_CLOSE SURROUND HP=" + I2S(R2I(creepHP)))
             endif
             set hero = null
@@ -435,7 +435,7 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
         call ForGroup(armyG, function Trig_AIML_CreepAllInCB)
         call DestroyGroup(armyG)
         set armyG = null
-        if udg_aiml_DebugMode and udg_RoundNo == 1 then
+        if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "[CREEP] NO_DK_ATK HP=" + I2S(R2I(creepHP)))
         endif
         set hero = null
@@ -479,8 +479,9 @@ endfunction
         call Trig_AIML_SalvoForPlayer(Player(0), Player(1), 1)
     endif
     if GetPlayerController(Player(1)) == MAP_CONTROL_COMPUTER then
-        // [V40] salvo always runs; creep mode and salvo are independent
-        call Trig_AIML_SalvoForPlayer(Player(1), Player(0), 2)
+        if not creep1 then
+            call Trig_AIML_SalvoForPlayer(Player(1), Player(0), 2)
+        endif
     endif
 endfunction"""
 
@@ -525,17 +526,11 @@ endfunction"""
     RESET_INJECT = (
         "// Variable Reset" + nl
         + "    // [AIML V39] Reset AI mode state on each round start" + nl
-        + "    // [AIML V39] Round1Mode reads from Round1Pref (persists across rounds)" + nl
-        + "    if udg_RoundNo == 1 then" + nl
-        + "        set udg_aiml_Round1Mode = udg_aiml_Round1Pref" + nl
-        + "    else" + nl
-        + "        set udg_aiml_Round1Mode = 0" + nl
-        + "    endif" + nl
+        + "    set udg_aiml_Round1Mode = 0" + nl
         + "    set udg_aiml_CreepMode = 0" + nl
         + "    set udg_aiml_SurroundStillTicks = 0" + nl
         + "    set udg_aiml_SurroundAttacking = false" + nl
-        + "    set udg_aiml_SurroundTarget = null" + nl
-        + "    set udg_aiml_SurroundFallbackPrinted = false"
+        + "    set udg_aiml_SurroundTarget = null"
     )
     if RESET_MARKER in src:
         src = src.replace(RESET_MARKER, RESET_INJECT, 1)

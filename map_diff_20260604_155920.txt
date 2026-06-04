@@ -1,0 +1,53 @@
+========================================
+ WC3 Map Package Content Comparison
+ Generated: 2026-06-04 15:59:20
+========================================
+  OLD: /data/ufo/Warcraft-III/converted-1.27/UD-decisive-V39.07-1.27.w3x
+  NEW: /data/ufo/Warcraft-III/UD-decisive-1.27.w3x
+
+----------------------------------------
+[1] Basic Info
+----------------------------------------
+  OLD: 533439 bytes  Modified: 2026-06-04 13:56:50.769887387 +0800
+  NEW: 533439 bytes  Modified: 2026-06-04 15:11:16.985226367 +0800
+  Package MD5: Different (old:2e392030bddb4f25260b93659d3a3307 new:fe72564316b31157db2dd9659366f80a)
+    OLD: 2e392030bddb4f25260b93659d3a3307
+    NEW: fe72564316b31157db2dd9659366f80a
+
+----------------------------------------
+[2] File List Comparison
+----------------------------------------
+  √ File list identical
+
+----------------------------------------
+[3] Content Comparison (md5)
+----------------------------------------
+  √ war3map.doo  (52124 bytes)
+  √ war3map.j  (1443045 bytes)
+  √ war3map.mmp  (56 bytes)
+  √ war3map.shd  (196608 bytes)
+  √ war3map.w3a  (1095 bytes)
+  √ war3map.w3c  (8 bytes)
+  √ war3map.w3e  (87660 bytes)
+  √ war3map.w3h  (48 bytes)
+  √ war3map.w3i  (341 bytes)
+  √ war3map.w3q  (36 bytes)
+  √ war3map.w3r  (1593 bytes)
+  √ war3map.w3s  (186 bytes)
+  √ war3map.w3u  (3283 bytes)
+  √ war3map.wct  (925 bytes)
+  √ war3map.wpm  (196624 bytes)
+  √ war3map.wtg  (1620976 bytes)
+  √ war3map.wts  (6642 bytes)
+  √ war3mapMap.blp  (10248 bytes)
+  √ war3mapUnits.doo  (793 bytes)
+
+----------------------------------------
+[5] Summary
+----------------------------------------
+  Total files compared: 21
+  √ Identical: 21 files
+  √ All content identical, packages equivalent
+
+  Output: /data/ufo/Warcraft-III/map_diff_20260604_155920.txt
+========================================
