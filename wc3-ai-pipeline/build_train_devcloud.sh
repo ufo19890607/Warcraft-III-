@@ -4,8 +4,8 @@
 # 用法: ./build_train_devcloud.sh <input.w3x> <output-prefix>
 #
 # 示例:
-#   ./build_train_devcloud.sh /data/ufo/Warcraft-III-/UD决战-原始.w3x \
-#       /data/ufo/Warcraft-III-/converted-reforged/UD-decisive-V40
+#   ./build_train_devcloud.sh /data/ufo/Warcraft-III/UD决战-原始.w3x \
+#       /data/ufo/Warcraft-III/converted-reforged/UD-decisive-V40
 #
 # 输出:
 #   <output-prefix>-Reforged.w3x
@@ -33,7 +33,7 @@ INJECTOR_CREEP="$SCRIPT_DIR/inject_ai_creep_control.py"
 INJECTOR_SURROUND="$SCRIPT_DIR/inject_ai_surround.py"
 INJECTOR_HERO="$SCRIPT_DIR/inject_hero_skills.py"
 REPACK="$SCRIPT_DIR/tools/repack"
-HEADER_BIN="/data/ufo/Warcraft-III-/converted-1.27/UD-decisive-V35-1.27.w3x"  # 1.27 header source
+HEADER_BIN="$SCRIPT_DIR/../base-1.27/base-1.27.w3x"  # 1.27 header source (stable, do not delete)
 DOO_DG="$SCRIPT_DIR/tools/doo_downgrade.py"
 UNITS_DG="$SCRIPT_DIR/tools/units_doo_downgrade.py"
 W3I_DG="$SCRIPT_DIR/tools/w3i_downgrade.py"
@@ -43,7 +43,7 @@ W3OBJ_DG="$SCRIPT_DIR/tools/w3_objdata_downgrade.py"
 if [ $# -lt 2 ]; then
     echo "用法: $0 <input.w3x> <output-prefix>"
     echo ""
-    echo "示例: $0 /data/ufo/Warcraft-III-/UD决战.w3x /data/ufo/Warcraft-III-/converted-reforged/UD-V40"
+    echo "示例: $0 /data/ufo/Warcraft-III/origin-reforged/xxx.w3x /data/ufo/Warcraft-III/converted-reforged/UD-V40"
     echo "  → UD-V40-Reforged.w3x + UD-V40-1.27.w3x"
     exit 1
 fi
