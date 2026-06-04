@@ -496,19 +496,30 @@ endfunction"""
     # ------------------------------------------------------------------ #
     # 4) Guard Computer2Combat_AI_Actions in Round1
     # ------------------------------------------------------------------ #
-    GUARD_OLD = "function Trig_Computer2Combat_AI_Actions takes nothing returns nothing"
-    GUARD_NEW = (
-        "function Trig_Computer2Combat_AI_Actions takes nothing returns nothing" + nl
-        + "    // [CREEP V39] Skip combat AI dispatch when creep/surround mode is active in Round 1" + nl
-        + "    if udg_RoundNo == 1 and (udg_aiml_CreepMode >= 1 or udg_aiml_Round1Mode == 1) then" + nl
-        + "        return" + nl
-        + "    endif"
-    )
-    if GUARD_OLD in src:
-        src = src.replace(GUARD_OLD, GUARD_NEW, 1)
-        print("[V39] patched Computer2Combat_AI_Actions guard")
+    # Computer2Combat_AI_Actions: 只删 mass-attack GroupPointOrderLocBJ 两行，保留英雄技能 ForGroupBJ
+    # (不加 early return，否则先知群狼等英雄技能也被跳过)
+    # 用行级过滤，兼容训练图源和 reforged 源（括号内空格不同）
+    lines = src.split(nl)
+    in_c2 = False
+    new_lines = []
+    removed2 = 0
+    for line in lines:
+        if "function Trig_Computer2Combat_AI_Actions takes nothing returns nothing" in line:
+            in_c2 = True
+            new_lines.append(line)
+            new_lines.append("    // [CREEP V40] mass-attack removed, hero skill dispatch preserved")
+            continue
+        if in_c2 and "GroupPointOrderLocBJ" in line and '"attack"' in line:
+            removed2 += 1
+            continue
+        if in_c2 and line.strip().startswith("endfunction"):
+            in_c2 = False
+        new_lines.append(line)
+    src = nl.join(new_lines)
+    if removed2:
+        print(f"[V40] removed {removed2} Computer2 mass-attack lines, preserved ForGroupBJ")
     else:
-        print("WARN: Computer2Combat_AI_Actions not found, skipping guard patch")
+        print("WARN: Computer2 mass-attack lines not found, skipping")
 
     # 4c) Inject round-start state reset into Variable Reset block
     RESET_MARKER = "// Variable Reset"
@@ -527,19 +538,29 @@ endfunction"""
     else:
         print("WARN: Variable Reset marker not found, skipping state reset injection")
 
-    # 4b) Guard Computer1Combat_AI_Actions in Round1
-    GUARD1_OLD = "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing"
-    if GUARD1_OLD in src:
-        src = src.replace(
-            GUARD1_OLD,
-            "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing" + nl
-            + "    if udg_RoundNo == 1 and (udg_aiml_CreepMode >= 1 or udg_aiml_Round1Mode == 1) then" + nl
-            + "        return" + nl
-            + "    endif",
-        )
-        print("[V39] patched Computer1Combat_AI_Actions guard")
+    # 4b) Computer1Combat_AI_Actions: 只删 mass-attack 两行，保留英雄技能 ForGroupBJ
+    # 用行级过滤，兼容训练图源和 reforged 源
+    lines = src.split(nl)
+    in_c1 = False
+    new_lines = []
+    removed1 = 0
+    for line in lines:
+        if "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing" in line:
+            in_c1 = True
+            new_lines.append(line)
+            new_lines.append("    // [CREEP V40] mass-attack removed, hero skill dispatch preserved")
+            continue
+        if in_c1 and "GroupPointOrderLocBJ" in line and '"attack"' in line:
+            removed1 += 1
+            continue
+        if in_c1 and line.strip().startswith("endfunction"):
+            in_c1 = False
+        new_lines.append(line)
+    src = nl.join(new_lines)
+    if removed1:
+        print(f"[V40] removed {removed1} Computer1 mass-attack lines, preserved ForGroupBJ")
     else:
-        print("WARN: Computer1Combat_AI_Actions not found, skipping guard patch")
+        print("WARN: Computer1 mass-attack lines not found, skipping")
 
     # ------------------------------------------------------------------ #
     # 5) Disable original neutral-attack triggers
