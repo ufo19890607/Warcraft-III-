@@ -59,8 +59,7 @@ def main():
     real    udg_aiml_SurroundPrevY = 0.0
     boolean udg_aiml_SurroundPhase2 = false
     integer udg_aiml_SurroundStillTicks = 0
-    boolean udg_aiml_SurroundAttacking = false
-    boolean udg_aiml_SurroundFallbackPrinted = false"""
+    boolean udg_aiml_SurroundAttacking = false"""
 
     # Insert after CreepMode global (injected by inject_creep_control.py)
     marker = "integer udg_aiml_CreepMode = 0"
@@ -222,9 +221,8 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     call DestroyGroup(g)
     set g = null
     if unitCount < 8 then
-        if udg_aiml_DebugMode and not udg_aiml_SurroundFallbackPrinted then
+        if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "[SURROUND] unit count=" + I2S(unitCount) + " <8, fallback to creep")
-            set udg_aiml_SurroundFallbackPrinted = true
         endif
         call Trig_AIML_CreepControlForPlayer(p, ep)
         set udg_aiml_CreepMode = 0
@@ -259,7 +257,7 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     endif
     // Phase 2 check
     set udg_aiml_SurroundPhase2 = Trig_AIML_SurroundQuadrantCheck(p, tx, ty, 800.0)
-    if udg_aiml_DebugMode and udg_RoundNo == 1 then
+    if udg_aiml_DebugMode then
         if udg_aiml_SurroundPhase2 then
             call DisplayTextToForce(GetPlayersAll(), "[SURROUND] Phase 2 SQUEEZE on " + GetUnitName(udg_aiml_SurroundTarget))
         else
