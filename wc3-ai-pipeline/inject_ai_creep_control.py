@@ -479,9 +479,8 @@ endfunction
         call Trig_AIML_SalvoForPlayer(Player(0), Player(1), 1)
     endif
     if GetPlayerController(Player(1)) == MAP_CONTROL_COMPUTER then
-        if not creep1 then
-            call Trig_AIML_SalvoForPlayer(Player(1), Player(0), 2)
-        endif
+        // [V40] salvo always runs; creep mode and salvo are independent
+        call Trig_AIML_SalvoForPlayer(Player(1), Player(0), 2)
     endif
 endfunction"""
 
@@ -526,7 +525,12 @@ endfunction"""
     RESET_INJECT = (
         "// Variable Reset" + nl
         + "    // [AIML V39] Reset AI mode state on each round start" + nl
-        + "    set udg_aiml_Round1Mode = 0" + nl
+        + "    // [AIML V39] Round1Mode reads from Round1Pref (persists across rounds)" + nl
+        + "    if udg_RoundNo == 1 then" + nl
+        + "        set udg_aiml_Round1Mode = udg_aiml_Round1Pref" + nl
+        + "    else" + nl
+        + "        set udg_aiml_Round1Mode = 0" + nl
+        + "    endif" + nl
         + "    set udg_aiml_CreepMode = 0" + nl
         + "    set udg_aiml_SurroundStillTicks = 0" + nl
         + "    set udg_aiml_SurroundAttacking = false" + nl

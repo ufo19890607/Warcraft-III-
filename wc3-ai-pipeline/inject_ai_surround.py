@@ -15,10 +15,10 @@ Features (V39.06):
       * Still-tick detection: target moves < 50 units -> increment counter;
         >= 6 ticks still -> SurroundAttacking=true; moves >= 50 -> reset to encircle
       * Phase 2 check -> SurroundMoveCB
-  - SurroundToggle: -surround command -> Round1Mode=1
-  - CreepModeToggle: -creep command -> Round1Mode=0
+  - SurroundToggle: -surround command -> Round1Mode=1, Round1Pref=1
+  - CreepModeToggle: -creep command -> Round1Mode=0, Round1Pref=0
   - SurroundInit: registers -surround and -creep chat commands
-  - Globals: Round1Mode, SurroundTarget/X/Y, SurroundPrevX/Y, SurroundPhase2,
+  - Globals: Round1Mode, Round1Pref, SurroundTarget/X/Y, SurroundPrevX/Y, SurroundPhase2,
              SurroundStillTicks, SurroundAttacking
 
 Prerequisites: inject_creep_control.py must have already been run
@@ -51,6 +51,7 @@ def main():
     # ------------------------------------------------------------------ #
     SURROUND_GLOBALS = """    // [SURROUND V39] Encircle/Surround system globals
     integer udg_aiml_Round1Mode = 0
+    integer udg_aiml_Round1Pref = 1  // default ON: auto-enable creep mode in Round 1
     unit    udg_aiml_SurroundTarget = null
     real    udg_aiml_SurroundTargetX = 0.0
     real    udg_aiml_SurroundTargetY = 0.0
@@ -277,12 +278,14 @@ endfunction
 // -surround: activate surround mode in Round 1
 function Trig_AIML_SurroundToggle takes nothing returns nothing
     set udg_aiml_Round1Mode = 1
+    set udg_aiml_Round1Pref = 1
     call DisplayTextToForce(GetPlayersAll(), "|cffff8800[AIML] Round 1 mode: SURROUND|r")
 endfunction
 
 // -creep: activate creep/last-hit mode in Round 1
 function Trig_AIML_CreepModeToggle takes nothing returns nothing
     set udg_aiml_Round1Mode = 0
+    set udg_aiml_Round1Pref = 0
     call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[AIML] Round 1 mode: CREEP|r")
 endfunction
 
