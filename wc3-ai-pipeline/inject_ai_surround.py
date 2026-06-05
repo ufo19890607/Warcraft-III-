@@ -52,6 +52,7 @@ def main():
     SURROUND_GLOBALS = """    // [SURROUND V39] Encircle/Surround system globals
     integer udg_aiml_Round1Mode = 0
     integer udg_aiml_Round1Pref = 1  // default ON: auto-enable creep mode in Round 1
+    real    udg_aiml_SurroundBaitHP = 200.0  // [POC] bait threshold: creep HP <= this triggers surround
     integer udg_aiml_SurroundFallbackPrinted = 0
     unit    udg_aiml_SurroundTarget = null
     real    udg_aiml_SurroundTargetX = 0.0
@@ -203,6 +204,8 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     local real ddy
     local integer unitCount
     local unit u
+    local unit baitCreep
+    local unit baitHero
     // Only for computer-controlled players
     if GetPlayerController(p) != MAP_CONTROL_COMPUTER then
         return
@@ -230,6 +233,29 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
         set udg_aiml_CreepMode = 0
         return
     endif
+    // [POC] Bait-surround: if creep HP > SurroundBaitHP, fall back to creep control
+    // Once creep HP <= SurroundBaitHP, enemy hero is likely nearby -> proceed to surround
+    set baitHero = Trig_AIML_CreepFindHero(p)
+    if baitHero != null then
+        set baitCreep = Trig_AIML_CreepFindLowHP(GetUnitX(baitHero), GetUnitY(baitHero), udg_aiml_CreepScanRadius, 9999.0)
+    endif
+    set baitHero = null
+    if baitCreep != null then
+        if GetUnitState(baitCreep, UNIT_STATE_LIFE) > udg_aiml_SurroundBaitHP then
+            if udg_aiml_DebugMode then
+                call DisplayTextToForce(GetPlayersAll(), "[SURROUND] bait: creep HP=" + I2S(R2I(GetUnitState(baitCreep, UNIT_STATE_LIFE))) + " >" + I2S(R2I(udg_aiml_SurroundBaitHP)) + ", creep phase")
+            endif
+            set baitCreep = null
+            call Trig_AIML_CreepControlForPlayer(p, ep)
+            set udg_aiml_CreepMode = 0
+            return
+        endif
+        if udg_aiml_DebugMode then
+            call DisplayTextToForce(GetPlayersAll(), "[SURROUND] bait: creep HP=" + I2S(R2I(GetUnitState(baitCreep, UNIT_STATE_LIFE))) + " <=" + I2S(R2I(udg_aiml_SurroundBaitHP)) + ", SURROUND triggered!")
+        endif
+    endif
+    set baitCreep = null
+
     // Find target
     set udg_aiml_SurroundTarget = Trig_AIML_SurroundFindTarget(ep)
     if udg_aiml_SurroundTarget == null then
