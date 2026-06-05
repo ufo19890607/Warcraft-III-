@@ -4,8 +4,7 @@
 # 用法: ./build_train_devcloud.sh <input.w3x> <output-prefix>
 #
 # 示例:
-#   ./build_train_devcloud.sh /data/ufo/Warcraft-III/UD决战-原始.w3x \
-#       /data/ufo/Warcraft-III/converted-reforged/UD-decisive-V40
+#   ./build_train_devcloud.sh $war3_dir/UD-decisive-micro-reforged.w3x UD-decisive-V40
 #
 # 输出:
 #   <output-prefix>-Reforged.w3x
@@ -43,15 +42,22 @@ W3OBJ_DG="$SCRIPT_DIR/tools/w3_objdata_downgrade.py"
 if [ $# -lt 2 ]; then
     echo "用法: $0 <input.w3x> <output-prefix>"
     echo ""
-    echo "示例: $0 /data/ufo/Warcraft-III/origin-reforged/xxx.w3x /data/ufo/Warcraft-III/converted-reforged/UD-V40"
-    echo "  → UD-V40-Reforged.w3x + UD-V40-1.27.w3x"
+    echo "示例: $0 xxx.w3x UD-decisive-V40"
+    echo "  → converted-reforged/UD-V40-Reforged.w3x"
+    echo "  → converted-1.27/UD-V40-1.27.w3x"
     exit 1
 fi
 
 INPUT_W3X="$(realpath "$1")"
 OUT_PREFIX="$2"
-OUT_REFORGED="${OUT_PREFIX}-Reforged.w3x"
-OUT_127="${OUT_PREFIX}-1.27.w3x"
+# 自动将产物放到各自目录：converted-reforged / converted-1.27
+# 目录始终相对于脚本所在位置的上一级（即 Warcraft-III/）
+_BASENAME="$(basename "$OUT_PREFIX")"
+_DIR_REFORGED="$SCRIPT_DIR/../converted-reforged"
+_DIR_127="$SCRIPT_DIR/../converted-1.27"
+mkdir -p "$_DIR_REFORGED" "$_DIR_127"
+OUT_REFORGED="$_DIR_REFORGED/${_BASENAME}-Reforged.w3x"
+OUT_127="$_DIR_127/${_BASENAME}-1.27.w3x"
 
 # 检查必要工具和脚本
 for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_TC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND"; do
