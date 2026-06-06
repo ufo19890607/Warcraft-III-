@@ -40,33 +40,40 @@ def main():
             print("added DebugMode global")
 
     # --- 7) Add chain lightning to Far Seer combat dispatch for both players ---
-    old_p1_farseer = """function Trig_Computer1Combat_AI_Func005A takes nothing returns nothing
-    call IssueTargetOrderBJ( GetEnumUnit(), "attack", GroupPickRandomUnit(GetUnitsOfPlayerMatching(Player(PLAYER_NEUTRAL_AGGRESSIVE), Condition(function Trig_Computer1Combat_AI_Func005Func001003001002))) )
-    call IssueTargetOrderBJ( GetEnumUnit(), "attack", GroupPickRandomUnit(GetUnitsOfPlayerMatching(Player(1), Condition(function Trig_Computer1Combat_AI_Func005Func002003001002))) )
-endfunction"""
-    new_p1_farseer = """function Trig_Computer1Combat_AI_Func005A takes nothing returns nothing
-    // [HERO] Far Seer chain lightning on enemy
-    call IssueTargetOrderBJ( GetEnumUnit(), "chainlightning", GroupPickRandomUnit(GetUnitsOfPlayerAll(Player(1))) )
-    call IssueTargetOrderBJ( GetEnumUnit(), "attack", GroupPickRandomUnit(GetUnitsOfPlayerMatching(Player(PLAYER_NEUTRAL_AGGRESSIVE), Condition(function Trig_Computer1Combat_AI_Func005Func001003001002))) )
-    call IssueTargetOrderBJ( GetEnumUnit(), "attack", GroupPickRandomUnit(GetUnitsOfPlayerMatching(Player(1), Condition(function Trig_Computer1Combat_AI_Func005Func002003001002))) )
-endfunction"""
-    if old_p1_farseer.replace("\n", nl) in src:
-        src = src.replace(old_p1_farseer.replace("\n", nl), new_p1_farseer.replace("\n", nl), 1)
-        print("added chainlightning to Player(0) Far Seer")
+    # NOTE: inject_ai_creep_control.py (step 5) comments out lines containing
+    # PLAYER_NEUTRAL_AGGRESSIVE+"attack", so the old full-body match fails when
+    # creep_control runs first. Use a position-based insert: find the Func005A
+    # function header and inject chainlightning right after it (before any existing
+    # IssueTargetOrderBJ lines). This is robust regardless of prior comment injection.
+    def _inject_chainlightning(code, func_name, enemy_player_expr, nl_char):
+        """Insert a chainlightning order as the first statement of func_name."""
+        marker = "function " + func_name + " takes nothing returns nothing"
+        idx = code.find(marker)
+        if idx == -1:
+            return code, False
+        # Already injected?
+        if "chainlightning" in code[idx:code.find("endfunction", idx)]:
+            return code, False
+        # Find end of the function header line
+        eol = code.index(nl_char, idx)
+        inject_line = (nl_char + "    // [HERO] Far Seer chain lightning on enemy" + nl_char
+                       + "    call IssueTargetOrderBJ( GetEnumUnit(), \"chainlightning\","
+                       " GroupPickRandomUnit(GetUnitsOfPlayerAll(" + enemy_player_expr + ")) )")
+        return code[:eol] + inject_line + code[eol:], True
 
-    old_p2_farseer = """function Trig_Computer2Combat_AI_Func005A takes nothing returns nothing
-    call IssueTargetOrderBJ( GetEnumUnit(), "attack", GroupPickRandomUnit(GetUnitsOfPlayerMatching(Player(PLAYER_NEUTRAL_AGGRESSIVE), Condition(function Trig_Computer2Combat_AI_Func005Func001003001002))) )
-    call IssueTargetOrderBJ( GetEnumUnit(), "attack", GroupPickRandomUnit(GetUnitsOfPlayerMatching(Player(0), Condition(function Trig_Computer2Combat_AI_Func005Func002003001002))) )
-endfunction"""
-    new_p2_farseer = """function Trig_Computer2Combat_AI_Func005A takes nothing returns nothing
-    // [HERO] Far Seer chain lightning on enemy
-    call IssueTargetOrderBJ( GetEnumUnit(), "chainlightning", GroupPickRandomUnit(GetUnitsOfPlayerAll(Player(0))) )
-    call IssueTargetOrderBJ( GetEnumUnit(), "attack", GroupPickRandomUnit(GetUnitsOfPlayerMatching(Player(PLAYER_NEUTRAL_AGGRESSIVE), Condition(function Trig_Computer2Combat_AI_Func005Func001003001002))) )
-    call IssueTargetOrderBJ( GetEnumUnit(), "attack", GroupPickRandomUnit(GetUnitsOfPlayerMatching(Player(0), Condition(function Trig_Computer2Combat_AI_Func005Func002003001002))) )
-endfunction"""
-    if old_p2_farseer.replace("\n", nl) in src:
-        src = src.replace(old_p2_farseer.replace("\n", nl), new_p2_farseer.replace("\n", nl), 1)
+    src, ok1 = _inject_chainlightning(
+        src, "Trig_Computer1Combat_AI_Func005A", "Player(1)", nl)
+    if ok1:
+        print("added chainlightning to Player(0) Far Seer")
+    else:
+        print("WARN: chainlightning already present or Func005A not found for Player(0)")
+
+    src, ok2 = _inject_chainlightning(
+        src, "Trig_Computer2Combat_AI_Func005A", "Player(0)", nl)
+    if ok2:
         print("added chainlightning to Player(1) Far Seer")
+    else:
+        print("WARN: chainlightning already present or Func005A not found for Player(1)")
 
     # --- 8) TC: replace Shockwave with War Stomp ---
     count_aosw = src.count("'AOsw'")
