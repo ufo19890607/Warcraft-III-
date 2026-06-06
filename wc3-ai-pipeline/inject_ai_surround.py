@@ -79,21 +79,10 @@ def main():
     # 2) Functions (insert before SalvoTick)
     # ------------------------------------------------------------------ #
     SURROUND_FUNCTIONS = r"""
-// Find lowest-HP creep near aiHero, then return distance from enemyHero to that creep.
-// Returns -1.0 if no creep found (no creep nearby = proceed with encircle).
-function Trig_AIML_SurroundEnemyCreepDist takes unit aiHero, unit enemyHero returns real
-    local real ax = GetUnitX(aiHero)
-    local real ay = GetUnitY(aiHero)
-    local unit creep
-    local real dx
-    local real dy
-    set creep = Trig_AIML_CreepFindLowHP(ax, ay, udg_aiml_CreepScanRadius, udg_aiml_CreepApproachHP)
-    if creep == null then
-        return -1.0
-    endif
-    set dx = GetUnitX(creep) - GetUnitX(enemyHero)
-    set dy = GetUnitY(creep) - GetUnitY(enemyHero)
-    set creep = null
+// Returns distance from enemyHero to the given creep unit.
+function Trig_AIML_SurroundEnemyCreepDist takes unit enemyHero, unit creep returns real
+    local real dx = GetUnitX(creep) - GetUnitX(enemyHero)
+    local real dy = GetUnitY(creep) - GetUnitY(enemyHero)
     return SquareRoot(dx * dx + dy * dy)
 endfunction
 
@@ -230,6 +219,7 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     local unit u
     local real creepDist
     local unit aiHero
+    local unit approachCreep
     if GetPlayerController(p) != MAP_CONTROL_COMPUTER then
         return
     endif
@@ -254,6 +244,85 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
         set udg_aiml_CreepMode = 0
         return
     endif
+    // [SURROUND] Creep HP gating (checked before finding encircle target):
+    // HP > 200 -> CreepControlForPlayer (normal last-hit/approach logic, preserves debug prints)
+    // HP 120-200 -> approach window: encircle or all-in depending on enemy hero distance
+    // HP < 120  -> all-in on creep directly
+    // No creep   -> proceed to encircle enemy
+    set aiHero = Trig_AIML_CreepFindHero(p)
+    if aiHero != null then
+        set approachCreep = Trig_AIML_CreepFindLowHP(GetUnitX(aiHero), GetUnitY(aiHero), udg_aiml_CreepScanRadius, udg_aiml_CreepApproachHP)
+        if approachCreep != null then
+            set creepDist = GetUnitState(approachCreep, UNIT_STATE_LIFE)
+            if creepDist >= udg_aiml_CreepApproachHP then
+                // HP >= 200: safety fallback
+                set approachCreep = null
+                set aiHero = null
+                if udg_aiml_DebugMode then
+                    call DisplayTextToForce(GetPlayersAll(), "[SURROUND] HP>200, creep mode")
+                endif
+                call Trig_AIML_CreepControlForPlayer(p, ep)
+                return
+            elseif creepDist < udg_aiml_CreepLastHitHP then
+                // HP < 120: all-in directly
+                if udg_aiml_DebugMode then
+                    call DisplayTextToForce(GetPlayersAll(), "[SURROUND] HP<120, attack creep")
+                endif
+                set udg_aiml_CreepTarget = approachCreep
+                set approachCreep = null
+                set aiHero = null
+                set g = CreateGroup()
+                call GroupEnumUnitsOfPlayer(g, p, null)
+                call ForGroup(g, function Trig_AIML_SurroundCreepAllInCB)
+                call DestroyGroup(g)
+                set g = null
+                return
+            else
+                // HP 120-200: check enemy hero distance to creep
+                set aiHero = null
+                set udg_aiml_SurroundTarget = Trig_AIML_SurroundFindTarget(ep)
+                if udg_aiml_SurroundTarget != null and IsUnitType(udg_aiml_SurroundTarget, UNIT_TYPE_HERO) then
+                    set creepDist = Trig_AIML_SurroundEnemyCreepDist(udg_aiml_SurroundTarget, approachCreep)
+                else
+                    set creepDist = 0.0
+                endif
+                if creepDist > 1000.0 then
+                    // Enemy hero far: all-in on creep
+                    if udg_aiml_DebugMode then
+                        call DisplayTextToForce(GetPlayersAll(), "[SURROUND] HP120-200 hero_dist=" + I2S(R2I(creepDist)) + " >1000, attack creep")
+                    endif
+                    set udg_aiml_CreepTarget = approachCreep
+                    set approachCreep = null
+                    set g = CreateGroup()
+                    call GroupEnumUnitsOfPlayer(g, p, null)
+                    call ForGroup(g, function Trig_AIML_SurroundCreepAllInCB)
+                    call DestroyGroup(g)
+                    set g = null
+                    return
+                endif
+                // Enemy hero close (<= 1000): fall through to encircle logic below
+                if udg_aiml_DebugMode then
+                    call DisplayTextToForce(GetPlayersAll(), "[SURROUND] HP120-200 hero_dist=" + I2S(R2I(creepDist)) + " <=1000, encircle")
+                endif
+                set approachCreep = null
+            endif
+        else
+            // No creep in 120-200 window: check for any creep (HP > 200 or none)
+            set udg_aiml_CreepTarget = Trig_AIML_CreepFindLowHP(GetUnitX(aiHero), GetUnitY(aiHero), udg_aiml_CreepScanRadius, 99999.0)
+            set aiHero = null
+            if udg_aiml_CreepTarget != null then
+                // Creep exists with HP > 200: hand off to CreepControlForPlayer
+                if udg_aiml_DebugMode then
+                    call DisplayTextToForce(GetPlayersAll(), "[SURROUND] HP>200, creep mode")
+                endif
+                call Trig_AIML_CreepControlForPlayer(p, ep)
+                return
+            endif
+            // No creep at all: proceed to encircle
+        endif
+    endif
+    set aiHero = null
+    set approachCreep = null
     set udg_aiml_SurroundTarget = Trig_AIML_SurroundFindTarget(ep)
     if udg_aiml_SurroundTarget == null then
         return
@@ -278,36 +347,6 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
         set udg_aiml_SurroundAttacking = false
     endif
     set udg_aiml_SurroundPhase2 = Trig_AIML_SurroundQuadrantCheck(p, tx, ty, 800.0)
-    // [SURROUND] If not yet attacking: check enemy hero distance to lowest-HP creep.
-    // > 1000 -> enemy hero is far, all-in on creep; <= 1000 -> proceed with encircle.
-    if not udg_aiml_SurroundAttacking then
-        set creepDist = -1.0
-        if IsUnitType(udg_aiml_SurroundTarget, UNIT_TYPE_HERO) then
-            set aiHero = Trig_AIML_CreepFindHero(p)
-            if aiHero != null then
-                set creepDist = Trig_AIML_SurroundEnemyCreepDist(aiHero, udg_aiml_SurroundTarget)
-            endif
-            set aiHero = null
-        endif
-        if creepDist > 1000.0 then
-            // Enemy hero is far from creep — all-in on lowest-HP creep instead
-            set aiHero = Trig_AIML_CreepFindHero(p)
-            if aiHero != null then
-                set udg_aiml_CreepTarget = Trig_AIML_CreepFindLowHP(GetUnitX(aiHero), GetUnitY(aiHero), udg_aiml_CreepScanRadius, udg_aiml_CreepApproachHP)
-            endif
-            set aiHero = null
-            if udg_aiml_CreepTarget != null then
-                set g = CreateGroup()
-                call GroupEnumUnitsOfPlayer(g, p, null)
-                call ForGroup(g, function Trig_AIML_SurroundCreepAllInCB)
-                call DestroyGroup(g)
-                set g = null
-                set udg_aiml_SurroundPrevX = tx
-                set udg_aiml_SurroundPrevY = ty
-                return
-            endif
-        endif
-    endif
     set g = CreateGroup()
     call GroupEnumUnitsOfPlayer(g, p, null)
     call ForGroup(g, function Trig_AIML_SurroundMoveCB)
