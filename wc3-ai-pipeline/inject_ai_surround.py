@@ -49,10 +49,8 @@ def main():
     # ------------------------------------------------------------------ #
     # 1) Globals
     # ------------------------------------------------------------------ #
-    SURROUND_GLOBALS = """    // [SURROUND V39] Encircle/Surround system globals
-    integer udg_aiml_Round1Mode = 0
-    integer udg_aiml_Round1Pref = 1  // default ON: auto-enable creep mode in Round 1
-    real    udg_aiml_SurroundBaitHP = 200.0  // [POC] bait threshold: creep HP <= this triggers surround
+    SURROUND_GLOBALS = """    integer udg_aiml_Round1Mode = 0
+    integer udg_aiml_Round1Pref = 1
     integer udg_aiml_SurroundFallbackPrinted = 0
     unit    udg_aiml_SurroundTarget = null
     real    udg_aiml_SurroundTargetX = 0.0
@@ -81,12 +79,44 @@ def main():
     # 2) Functions (insert before SalvoTick)
     # ------------------------------------------------------------------ #
     SURROUND_FUNCTIONS = r"""
-// ================================================================
-// [SURROUND V39] Encircle + Squeeze AI System
-// Active in Round 1 when Round1Mode == 1 (-surround command).
-// ================================================================
+// Find lowest-HP creep near aiHero, then return distance from enemyHero to that creep.
+// Returns -1.0 if no creep found (no creep nearby = proceed with encircle).
+function Trig_AIML_SurroundEnemyCreepDist takes unit aiHero, unit enemyHero returns real
+    local real ax = GetUnitX(aiHero)
+    local real ay = GetUnitY(aiHero)
+    local unit creep
+    local real dx
+    local real dy
+    set creep = Trig_AIML_CreepFindLowHP(ax, ay, udg_aiml_CreepScanRadius, udg_aiml_CreepApproachHP)
+    if creep == null then
+        return -1.0
+    endif
+    set dx = GetUnitX(creep) - GetUnitX(enemyHero)
+    set dy = GetUnitY(creep) - GetUnitY(enemyHero)
+    set creep = null
+    return SquareRoot(dx * dx + dy * dy)
+endfunction
 
-// Check if player's army covers all four quadrants around (tx,ty) within radius
+// AllIn callback for surround fallback (集火野怪)
+function Trig_AIML_SurroundCreepAllInCB takes nothing returns nothing
+    local unit u = GetEnumUnit()
+    if u == null then
+        return
+    endif
+    if IsUnitType(u, UNIT_TYPE_DEAD) or IsUnitType(u, UNIT_TYPE_STRUCTURE) then
+        set u = null
+        return
+    endif
+    if udg_aiml_CreepTarget == null then
+        set u = null
+        return
+    endif
+    call IssueTargetOrder(u, "smart", udg_aiml_CreepTarget)
+    set u = null
+endfunction
+
+
+
 function Trig_AIML_SurroundQuadrantCheck takes player p, real tx, real ty, real radius returns boolean
     local group g = CreateGroup()
     local unit u
@@ -122,7 +152,6 @@ function Trig_AIML_SurroundQuadrantCheck takes player p, real tx, real ty, real 
     return hasNE and hasNW and hasSE and hasSW
 endfunction
 
-// Move callback: encircle or squeeze or attack the surround target
 function Trig_AIML_SurroundMoveCB takes nothing returns nothing
     local unit u = GetEnumUnit()
     local real ux
@@ -141,7 +170,6 @@ function Trig_AIML_SurroundMoveCB takes nothing returns nothing
         set u = null
         return
     endif
-    // Attack mode: target trapped (still >=6 ticks) -> all units attack directly
     if udg_aiml_SurroundAttacking then
         if udg_aiml_SurroundTarget != null then
             call IssueTargetOrder(u, "smart", udg_aiml_SurroundTarget)
@@ -152,10 +180,8 @@ function Trig_AIML_SurroundMoveCB takes nothing returns nothing
     set ux = GetUnitX(u)
     set uy = GetUnitY(u)
     if udg_aiml_SurroundPhase2 then
-        // Phase 2: all quadrants covered -> squeeze to center
         call IssuePointOrder(u, "move", tx, ty)
     else
-        // Phase 1: pass through -> move 200 units past target on opposite side
         set dx = ux - tx
         set dy = uy - ty
         set dist = SquareRoot(dx * dx + dy * dy)
@@ -169,7 +195,6 @@ function Trig_AIML_SurroundMoveCB takes nothing returns nothing
     set u = null
 endfunction
 
-// Find surround target: enemy hero first, then first alive unit
 function Trig_AIML_SurroundFindTarget takes player enemyPlayer returns unit
     local group g = CreateGroup()
     local unit u
@@ -195,7 +220,6 @@ function Trig_AIML_SurroundFindTarget takes player enemyPlayer returns unit
     return best
 endfunction
 
-// [SURROUND V39] Main surround tick - called in Round 1 when Round1Mode==1
 function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     local group g
     local real tx
@@ -204,13 +228,11 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     local real ddy
     local integer unitCount
     local unit u
-    local unit baitCreep
-    local unit baitHero
-    // Only for computer-controlled players
+    local real creepDist
+    local unit aiHero
     if GetPlayerController(p) != MAP_CONTROL_COMPUTER then
         return
     endif
-    // Auto-downgrade: fewer than 8 alive units -> fall back to creep control
     set g = CreateGroup()
     set unitCount = 0
     call GroupEnumUnitsOfPlayer(g, p, null)
@@ -226,37 +248,12 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     set g = null
     if unitCount < 8 then
         if udg_aiml_DebugMode and udg_aiml_SurroundFallbackPrinted == 0 then
-            call DisplayTextToForce(GetPlayersAll(), "[SURROUND] unit count=" + I2S(unitCount) + " <8, fallback to creep")
             set udg_aiml_SurroundFallbackPrinted = 1
         endif
         call Trig_AIML_CreepControlForPlayer(p, ep)
         set udg_aiml_CreepMode = 0
         return
     endif
-    // [POC] Bait-surround: if creep HP > SurroundBaitHP, fall back to creep control
-    // Once creep HP <= SurroundBaitHP, enemy hero is likely nearby -> proceed to surround
-    set baitHero = Trig_AIML_CreepFindHero(p)
-    if baitHero != null then
-        set baitCreep = Trig_AIML_CreepFindLowHP(GetUnitX(baitHero), GetUnitY(baitHero), udg_aiml_CreepScanRadius, 9999.0)
-    endif
-    set baitHero = null
-    if baitCreep != null then
-        if GetUnitState(baitCreep, UNIT_STATE_LIFE) > udg_aiml_SurroundBaitHP then
-            if udg_aiml_DebugMode then
-                call DisplayTextToForce(GetPlayersAll(), "[SURROUND] bait: creep HP=" + I2S(R2I(GetUnitState(baitCreep, UNIT_STATE_LIFE))) + " >" + I2S(R2I(udg_aiml_SurroundBaitHP)) + ", creep phase")
-            endif
-            set baitCreep = null
-            call Trig_AIML_CreepControlForPlayer(p, ep)
-            set udg_aiml_CreepMode = 0
-            return
-        endif
-        if udg_aiml_DebugMode then
-            call DisplayTextToForce(GetPlayersAll(), "[SURROUND] bait: creep HP=" + I2S(R2I(GetUnitState(baitCreep, UNIT_STATE_LIFE))) + " <=" + I2S(R2I(udg_aiml_SurroundBaitHP)) + ", SURROUND triggered!")
-        endif
-    endif
-    set baitCreep = null
-
-    // Find target
     set udg_aiml_SurroundTarget = Trig_AIML_SurroundFindTarget(ep)
     if udg_aiml_SurroundTarget == null then
         return
@@ -269,55 +266,67 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     set ty = GetUnitY(udg_aiml_SurroundTarget)
     set udg_aiml_SurroundTargetX = tx
     set udg_aiml_SurroundTargetY = ty
-    // Check if target has moved since last tick (threshold 50 units = 2500 sq)
     set ddx = tx - udg_aiml_SurroundPrevX
     set ddy = ty - udg_aiml_SurroundPrevY
     if ddx * ddx + ddy * ddy < 2500.0 then
-        // Target still: increment still counter
         set udg_aiml_SurroundStillTicks = udg_aiml_SurroundStillTicks + 1
         if udg_aiml_SurroundStillTicks >= 6 then
             set udg_aiml_SurroundAttacking = true
         endif
     else
-        // Target moved: escaped -> reset to encircle
         set udg_aiml_SurroundStillTicks = 0
         set udg_aiml_SurroundAttacking = false
     endif
-    // Phase 2 check
     set udg_aiml_SurroundPhase2 = Trig_AIML_SurroundQuadrantCheck(p, tx, ty, 800.0)
-    if udg_aiml_DebugMode and udg_RoundNo == 1 then
-        if udg_aiml_SurroundPhase2 then
-            call DisplayTextToForce(GetPlayersAll(), "[SURROUND] Phase 2 SQUEEZE on " + GetUnitName(udg_aiml_SurroundTarget))
-        else
-            call DisplayTextToForce(GetPlayersAll(), "[SURROUND] Phase 1 ENCIRCLE on " + GetUnitName(udg_aiml_SurroundTarget))
+    // [SURROUND] If not yet attacking: check enemy hero distance to lowest-HP creep.
+    // > 1000 -> enemy hero is far, all-in on creep; <= 1000 -> proceed with encircle.
+    if not udg_aiml_SurroundAttacking then
+        set creepDist = -1.0
+        if IsUnitType(udg_aiml_SurroundTarget, UNIT_TYPE_HERO) then
+            set aiHero = Trig_AIML_CreepFindHero(p)
+            if aiHero != null then
+                set creepDist = Trig_AIML_SurroundEnemyCreepDist(aiHero, udg_aiml_SurroundTarget)
+            endif
+            set aiHero = null
+        endif
+        if creepDist > 1000.0 then
+            // Enemy hero is far from creep — all-in on lowest-HP creep instead
+            set aiHero = Trig_AIML_CreepFindHero(p)
+            if aiHero != null then
+                set udg_aiml_CreepTarget = Trig_AIML_CreepFindLowHP(GetUnitX(aiHero), GetUnitY(aiHero), udg_aiml_CreepScanRadius, udg_aiml_CreepApproachHP)
+            endif
+            set aiHero = null
+            if udg_aiml_CreepTarget != null then
+                set g = CreateGroup()
+                call GroupEnumUnitsOfPlayer(g, p, null)
+                call ForGroup(g, function Trig_AIML_SurroundCreepAllInCB)
+                call DestroyGroup(g)
+                set g = null
+                set udg_aiml_SurroundPrevX = tx
+                set udg_aiml_SurroundPrevY = ty
+                return
+            endif
         endif
     endif
-    // Issue move orders
     set g = CreateGroup()
     call GroupEnumUnitsOfPlayer(g, p, null)
     call ForGroup(g, function Trig_AIML_SurroundMoveCB)
     call DestroyGroup(g)
     set g = null
-    // Save position for next tick
     set udg_aiml_SurroundPrevX = tx
     set udg_aiml_SurroundPrevY = ty
 endfunction
 
-// -surround: activate surround mode in Round 1
 function Trig_AIML_SurroundToggle takes nothing returns nothing
     set udg_aiml_Round1Mode = 1
     set udg_aiml_Round1Pref = 1
-    call DisplayTextToForce(GetPlayersAll(), "|cffff8800[AIML] Round 1 mode: SURROUND|r")
 endfunction
 
-// -creep: activate creep/last-hit mode in Round 1
 function Trig_AIML_CreepModeToggle takes nothing returns nothing
     set udg_aiml_Round1Mode = 0
     set udg_aiml_Round1Pref = 0
-    call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[AIML] Round 1 mode: CREEP|r")
 endfunction
 
-// Register -surround and -creep chat commands at init
 function Trig_AIML_SurroundInit takes nothing returns nothing
     local trigger t1 = CreateTrigger()
     local trigger t2 = CreateTrigger()
