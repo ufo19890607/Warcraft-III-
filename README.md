@@ -102,3 +102,12 @@ wc3-ai-pipeline/
     common-127-clean.j        ← pjass 用
     Blizzard.j                ← pjass 用
 ```
+
+## 出包文件名规范
+
+- **不要带中文**，只用 ASCII（英文 + 数字 +  + ）
+- **文件名要尽量短**：微信传文件时会在文件名后自动追加一串随机字符串（如 `---c7ba627d-f27d-4f95-9659`），导致 1.27 客户端在选图界面找不到地图
+  - ✅ `UD-V39-Test.w3x`
+  - ✅ `UD-decisive-V39-NewBase.w3x`
+  - ❌ `UD-decisive-V39.13-NewBase-Test2-1.27.w3x`（叠加多个长后缀）
+- 收到包后选图看不到，第一件事检查文件名是否被微信改长了，把随机串删掉即可
