@@ -3,7 +3,7 @@
 ## 一键流水线（主入口）
 
 ```bash
-cd /data/ufo/Warcraft-III-/wc3-ai-pipeline/
+cd /data/ufo/Warcraft-III/wc3-ai-pipeline/
 ./build_train_devcloud.sh <input.w3x> <output-prefix>
 ```
 
@@ -11,23 +11,84 @@ cd /data/ufo/Warcraft-III-/wc3-ai-pipeline/
 - `<prefix>-Reforged.w3x` — 重制版（可在重制版客户端打开）
 - `<prefix>-1.27.w3x` — 1.27 兼容版（可在 1.27 整合包打开）
 
-## 5 项注入功能 & 对应脚本
+## 8 步注入流水线 & 对应脚本
 
-| 顺序 | 功能 | 脚本 |
+| 步骤 | 功能 | 脚本 | 游戏内命令 |
+|---|---|---|---|
+| 1 | 解包 war3map.j | — | — |
+| 2 | 远程齐射 | `inject_salvo.py` | — |
+| 3 | TC 战争践踏 + 暗影猎手（Hex/治疗波） | `inject_hero_magic.py` | — |
+| 4 | 集火后撤保护 | `inject_ai_focus_retreat.py` | — |
+| 5 | 补刀 / 防补刀（Round 1） | `inject_ai_creep_control.py` | `-creep` |
+| 6 | 围杀（Round 1） | `inject_ai_surround.py` | `-surround` |
+| 7 | Debug 开关 | `inject_debug.py` | `-debug` |
+| 8 | pjass 语法检查 + 打包 | — | — |
+
+## Timer 架构
+
+各模块使用独立 timer，tick 间隔集中在 `ai_config.py` 配置：
+
+| Timer | tick | 驱动模块 | 说明 |
+|---|---|---|---|
+| SalvoTick | 0.50s | 齐射 + 集火后撤 | 避免打断攻击前摇；HP 下降检测需 0.5s 窗口 |
+| HeroMagic (SH_Init) | 0.10s | TC 践踏 + 暗影猎手 Hex/Heal | 快速响应施法时机 |
+| CreepTick | 0.30s | 补刀 | 独立 timer，精度与平滑的折中 |
+| SurroundTimerTick | 0.30s | 围杀 | 独立 timer，仅 Round1 + 围杀模式开启时生效 |
+
+### 围杀静止检测参数
+
+DK 移速 ~270 码/秒，0.3s tick 下每 tick 移动 ~81 码。
+
+| 参数 | 值 | 含义 |
 |---|---|---|
-| 1 | 智能 TC 战争践踏 + 远程齐射 | `inject_tc_stomp_salvo.py` |
-| 2 | 集火后撤 | `inject_ai_focus_retreat.py` |
-| 3 | 补刀 / 防补刀 | `inject_ai_creep_control.py` |
-| 4 | 围杀 | `inject_ai_surround.py` |
-| 5 | 英雄技能修复（可选） | `inject_hero_skills.py` |
+| `SURROUND_STILL_THRESHOLD` | 900.0 | 平方距离阈值（30 码），低于此视为静止 |
+| `SURROUND_STILL_TICKS` | 10 | 连续静止 tick 数后切换为攻击（10 × 0.3 = 3.0s） |
 
-## 游戏内命令
+> **注意**：修改 `TICK_SURROUND` 后必须同步调整 still 参数，否则会误判移动中的目标为静止。
 
-| 命令 | 效果 |
+## 英雄魔法详情
+
+### TC 战争践踏（inject_hero_magic.py）
+- 自动检测范围内敌人，智能施放践踏
+
+### 暗影猎手 AI（inject_hero_magic.py）
+- **Hex**：仅对敌方 DK 施放
+- **治疗波**：己方英雄单 tick HP 下降 ≥15% 时触发
+
+### 齐射（inject_salvo.py）
+- 远程单位集火目标英雄
+- `'Oshd'`（暗影猎手）已从远程英雄白名单移除
+
+## 关键配置文件
+
+| 文件 | 用途 |
 |---|---|
-| `-debug` | 开启 debug 文字输出 |
-| `-creep` | 第一关切换为补刀/防补刀模式（默认） |
-| `-surround` | 第一关切换为围杀模式 |
+| `ai_config.py` | 全局 tick 间隔 + 围杀参数 |
+| `build_train_devcloud.sh` | 8 步注入流水线入口 |
+
+## 文件结构
+
+```
+wc3-ai-pipeline/
+  ai_config.py                ← 全局 tick 间隔 + 围杀参数配置
+  build_train_devcloud.sh     ← 主入口（一键出图）
+  inject_salvo.py             ← 远程齐射
+  inject_hero_magic.py        ← TC践踏 + 暗影猎手 Hex/治疗波
+  inject_ai_focus_retreat.py  ← 集火后撤
+  inject_ai_creep_control.py  ← 补刀 / 防补刀 + CreepTick独立timer
+  inject_ai_surround.py       ← 围杀 + SurroundTimerTick独立timer
+  inject_debug.py             ← Debug命令（-debug）
+  inject_ai_intercept.py      ← 卡位拦截（实验性，未纳入流水线）
+  deprecated/                 ← 废弃脚本（仅供参考）
+  tools/
+    stormtool                 ← MPQ 解包
+    stormpatch                ← 单文件替换打包
+    pjass                     ← JASS 语法检查
+    repack                    ← 重打包工具
+  refs/
+    common-127-clean.j        ← pjass 用
+    Blizzard.j                ← pjass 用
+```
 
 ## 废弃脚本说明
 
@@ -36,13 +97,15 @@ cd /data/ufo/Warcraft-III-/wc3-ai-pipeline/
 | 脚本 | 废弃原因 |
 |---|---|
 | `inject_aiml_v1_simple.py` | 早期原型，功能不完整 |
-| `inject_aiml_v2.py` | 已重命名为 `inject_tc_stomp_salvo.py` |
+| `inject_aiml_v2.py` | 已重命名为 `inject_salvo.py` |
 | `inject_aiml_v3.py` | 包含 kite（风筝）功能，已废弃（见下）|
 | `inject_aiml_kite.py` | kite 功能废弃（见下）|
 | `inject_aiml_enhance.py` | 实验性增强，已被新脚本覆盖 |
 | `inject_retreat_v31.py` | 残血撤退功能，已废弃（见下）|
 | `inject_creep_control.py` | 已重命名为 `inject_ai_creep_control.py` |
 | `inject_focus_retreat.py` | 已重命名为 `inject_ai_focus_retreat.py` |
+| `inject_tc_stomp_salvo.py` | 已拆分为 `inject_salvo.py` + `inject_hero_magic.py` |
+| `inject_hero_skills.py` | 已重命名为 `inject_debug.py`（仅保留 -debug 命令） |
 
 ### 为什么废弃 kite（风筝）？
 
@@ -84,30 +147,26 @@ cd /data/ufo/Warcraft-III-/wc3-ai-pipeline/
 
 原图 `Computer1/2Combat_AI_Actions` 每秒执行一次 `GroupPointOrderLocBJ(全军, "attack", 随机目标)`，会覆盖 trigger 下发的其他指令。各注入脚本均在 Round 1 / 围杀模式下对母调度加了 early return 保护。
 
-## 文件结构
+## war3map.j 体积安全线
 
-```
-wc3-ai-pipeline/
-  build_train_devcloud.sh     ← 主入口（一键出图）
-  inject_tc_stomp_salvo.py    ← TC践踏 + 齐射
-  inject_ai_focus_retreat.py  ← 集火后撤
-  inject_ai_creep_control.py  ← 补刀 / 防补刀
-  inject_ai_surround.py       ← 围杀
-  inject_hero_skills.py       ← 英雄技能修复（可选）
-  tools/
-    stormtool                 ← MPQ 解包
-    stormpatch                ← 单文件替换打包
-    pjass                     ← JASS 语法检查（可选）
-  refs/
-    common-127-clean.j        ← pjass 用
-    Blizzard.j                ← pjass 用
-```
+WC3 引擎对脚本大小有隐性上限，超出会在加载时 crash（内存报错）。
+
+| 底座 | 注入后体积 | 状态 |
+|---|---|---|
+| 旧底座（origin） | ~1,444,911 bytes | ✅ 安全 |
+| 新底座（2026-06 更新） | ~1,451,261 bytes（原始）→ ~1,445,097 bytes（注入后） | ✅ 安全（余量 ~6KB） |
+
+**注意**：如果未来底座继续膨胀导致注入后超限，可对注入脚本做注释精简（参考 git commit `6d683c6`，已验证可节省 ~7KB，但会删掉 debug DisplayText 输出）。
 
 ## 出包文件名规范
 
-- **不要带中文**，只用 ASCII（英文 + 数字 +  + ）
+- **不要带中文**，只用 ASCII（英文 + 数字 + - + _）
 - **文件名要尽量短**：微信传文件时会在文件名后自动追加一串随机字符串（如 `---c7ba627d-f27d-4f95-9659`），导致 1.27 客户端在选图界面找不到地图
   - ✅ `UD-V39-Test.w3x`
   - ✅ `UD-decisive-V39-NewBase.w3x`
   - ❌ `UD-decisive-V39.13-NewBase-Test2-1.27.w3x`（叠加多个长后缀）
 - 收到包后选图看不到，第一件事检查文件名是否被微信改长了，把随机串删掉即可
+
+## 相关文档
+
+- `wc3-ai-pipeline/DEGRADE.md`：reforged → 1.27 降级踩坑记录
