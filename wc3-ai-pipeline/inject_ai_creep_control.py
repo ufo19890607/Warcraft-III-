@@ -16,6 +16,7 @@ V39 vs V35:
 """
 
 import sys
+from ai_config import TICK_CREEP_CONTROL
 
 
 def main():
@@ -452,20 +453,34 @@ endfunction
         sys.exit(1)
     src = src[:idx2] + CREEP_FUNCTIONS.replace("\n", nl) + src[idx2:]
     print("[V39] inserted creep functions")
+    # Insert CreepTick + CreepTimerInit (independent timer)
+    CREEP_TIMER_FUNCS = (
+        nl + "// [CREEP V39] Independent creep control timer" + nl
+        + "function Trig_AIML_CreepTick takes nothing returns nothing" + nl
+        + "    if udg_RoundNo == 1 and udg_aiml_Round1Mode == 1 then" + nl
+        + "        return" + nl
+        + "    endif" + nl
+        + "    call Trig_AIML_CreepControlForPlayer(Player(1), Player(0))" + nl
+        + "endfunction" + nl
+        + nl
+        + "function Trig_AIML_CreepTimerInit takes nothing returns nothing" + nl
+        + "    local trigger t = CreateTrigger()" + nl
+        + f"    call TriggerRegisterTimerEvent(t, {TICK_CREEP_CONTROL:.2f}, true)" + nl
+        + "    call TriggerAddAction(t, function Trig_AIML_CreepTick)" + nl
+        + "    set t = null" + nl
+        + "endfunction" + nl
+    )
+    stm = "function Trig_AIML_SalvoTick takes nothing returns nothing"
+    idx_st = src.find(stm)
+    if idx_st != -1:
+        src = src[:idx_st] + CREEP_TIMER_FUNCS + src[idx_st:]
+        print("[V39] inserted CreepTick + CreepTimerInit")
+
 
     # ------------------------------------------------------------------ #
     # 3) Rewrite SalvoTick to include Round1 creep+surround guard
     # ------------------------------------------------------------------ #
     NEW_SALVO_TICK = """function Trig_AIML_SalvoTick takes nothing returns nothing
-    local boolean creep1 = false
-    // [SURROUND] Round 1 mode switch
-    if udg_RoundNo == 1 and udg_aiml_Round1Mode == 1 then
-        call Trig_AIML_SurroundTick(Player(0), Player(1))
-        call Trig_AIML_SurroundTick(Player(1), Player(0))
-        return
-    endif
-    // [CREEP V39] Creep control only for AI (Player 1), only in Round 1
-    set creep1 = Trig_AIML_CreepControlForPlayer(Player(1), Player(0))
     // [FOCUS] Focus retreat only for computer-controlled players, Round 2+
     if udg_RoundNo >= 2 then
         if GetPlayerController(Player(1)) == MAP_CONTROL_COMPUTER then
@@ -561,6 +576,15 @@ endfunction"""
     src = nl.join(new_lines)
     if disabled:
         print(f"[V39] disabled {disabled} original neutral-attack triggers")
+
+
+    # Hook CreepTimerInit into main()
+    si_call = "call Trig_AIML_SalvoInit()"
+    idx_si = src.find(si_call)
+    if idx_si != -1 and "call Trig_AIML_CreepTimerInit()" not in src:
+        eol_si = src.index(nl, idx_si)
+        src = src[:eol_si + len(nl)] + "    call Trig_AIML_CreepTimerInit()" + nl + src[eol_si + len(nl):]
+        print("[V39] hooked CreepTimerInit into main()")
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(src)

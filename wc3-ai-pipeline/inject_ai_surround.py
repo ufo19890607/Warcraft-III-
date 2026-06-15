@@ -26,7 +26,7 @@ Prerequisites: inject_creep_control.py must have already been run
 """
 
 import sys
-from ai_config import SURROUND_STILL_THRESHOLD, SURROUND_STILL_TICKS
+from ai_config import SURROUND_STILL_THRESHOLD, SURROUND_STILL_TICKS, TICK_SURROUND
 
 
 def main():
@@ -369,15 +369,29 @@ function Trig_AIML_CreepModeToggle takes nothing returns nothing
     call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[AIML] Round 1 mode: CREEP|r")
 endfunction
 
+function Trig_AIML_SurroundTimerTick takes nothing returns nothing
+    if udg_RoundNo != 1 then
+        return
+    endif
+    if udg_aiml_Round1Mode != 1 then
+        return
+    endif
+    call Trig_AIML_SurroundTick(Player(0), Player(1))
+    call Trig_AIML_SurroundTick(Player(1), Player(0))
+endfunction
+
 function Trig_AIML_SurroundInit takes nothing returns nothing
     local trigger t1 = CreateTrigger()
     local trigger t2 = CreateTrigger()
+    local trigger t3 = CreateTrigger()
     call TriggerRegisterPlayerChatEvent(t1, Player(0), "-surround", true)
     call TriggerRegisterPlayerChatEvent(t1, Player(1), "-surround", true)
     call TriggerAddAction(t1, function Trig_AIML_SurroundToggle)
     call TriggerRegisterPlayerChatEvent(t2, Player(0), "-creep", true)
     call TriggerRegisterPlayerChatEvent(t2, Player(1), "-creep", true)
     call TriggerAddAction(t2, function Trig_AIML_CreepModeToggle)
+    call TriggerRegisterTimerEvent(t3, __TICK_SURROUND__, true)
+    call TriggerAddAction(t3, function Trig_AIML_SurroundTimerTick)
 endfunction
 
 """
@@ -390,42 +404,13 @@ endfunction
     funcs_text = SURROUND_FUNCTIONS
     funcs_text = funcs_text.replace("__SURROUND_STILL_THRESHOLD__", f"{SURROUND_STILL_THRESHOLD:.1f}")
     funcs_text = funcs_text.replace("__SURROUND_STILL_TICKS__", str(SURROUND_STILL_TICKS))
+    funcs_text = funcs_text.replace("__TICK_SURROUND__", f"{TICK_SURROUND:.2f}")
     src = src[:idx2] + funcs_text.replace("\n", nl) + src[idx2:]
     print("[V39] inserted surround functions")
 
     # ------------------------------------------------------------------ #
-    # 3) Patch SalvoTick: add Round1Mode surround guard at top
-    #    inject_creep_control.py already rewrote SalvoTick with a basic
-    #    Round1Mode check. If present, we leave it; otherwise we patch it.
-    # ------------------------------------------------------------------ #
-    if "udg_aiml_Round1Mode == 1" in src:
-        print("[V39] SalvoTick Round1Mode guard already present, skipping patch")
-    else:
-        # Find the SalvoTick function body and prepend the guard AFTER all local declarations
-        # (JASS requires all locals to come before any statements)
-        start = src.find("function Trig_AIML_SalvoTick takes nothing returns nothing")
-        if start != -1:
-            pos = src.index(nl, start) + len(nl)
-            # Skip all leading local/set/call lines until we find a non-local line
-            while True:
-                line_end = src.find(nl, pos)
-                if line_end == -1:
-                    break
-                line = src[pos:line_end].strip()
-                if line.startswith("local "):
-                    pos = line_end + len(nl)
-                else:
-                    break
-            guard = (
-                "    // [SURROUND V39] Round 1 surround mode" + nl
-                + "    if udg_RoundNo == 1 and udg_aiml_Round1Mode == 1 then" + nl
-                + "        call Trig_AIML_SurroundTick(Player(0), Player(1))" + nl
-                + "        call Trig_AIML_SurroundTick(Player(1), Player(0))" + nl
-                + "        return" + nl
-                + "    endif" + nl
-            )
-            src = src[:pos] + guard + src[pos:]
-            print("[V39] patched SalvoTick with Round1Mode surround guard (after locals)")
+    # 3) Surround now uses independent timer — no need to patch SalvoTick
+    print("[V39] surround uses independent timer, SalvoTick patch skipped")
 
     # ------------------------------------------------------------------ #
     # 4) Call SurroundInit from map init function (Trig_AIML_DebugInit or
