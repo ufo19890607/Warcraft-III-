@@ -10,12 +10,13 @@
 #   <output-prefix>-Reforged.w3x
 #   <output-prefix>-1.27.w3x
 #
-# 注入顺序（5项功能）:
-#   [2] TC战争践踏 + 齐射       inject_hero_magic.py
-#   [3] 集火后撤                inject_ai_focus_retreat.py
-#   [4] 围杀                    inject_ai_surround.py
+# 注入顺序（6项功能）:
+#   [2] 齐射                    inject_salvo.py
+#   [3] 英雄魔法(TC践踏+暗影猎手) inject_hero_magic.py
+#   [4] 集火后撤                inject_ai_focus_retreat.py
 #   [5] 补刀(重写SalvoTick)     inject_ai_creep_control.py
-#   [6] 英雄技能修复（可选）     inject_debug.py
+#   [6] 围杀                    inject_ai_surround.py
+#   [7] Debug命令（可选）       inject_debug.py
 
 set -euo pipefail
 
@@ -26,6 +27,7 @@ PJASS="$SCRIPT_DIR/tools/pjass"
 COMMON_J="$SCRIPT_DIR/refs/common-127-clean.j"
 BLIZZARD_J="$SCRIPT_DIR/refs/Blizzard.j"
 
+INJECTOR_SALVO="$SCRIPT_DIR/inject_salvo.py"
 INJECTOR_MAGIC="$SCRIPT_DIR/inject_hero_magic.py"
 INJECTOR_FOCUS="$SCRIPT_DIR/inject_ai_focus_retreat.py"
 INJECTOR_CREEP="$SCRIPT_DIR/inject_ai_creep_control.py"
@@ -60,7 +62,7 @@ OUT_REFORGED="$_DIR_REFORGED/${_BASENAME}-Reforged.w3x"
 OUT_127="$_DIR_127/${_BASENAME}-1.27.w3x"
 
 # 检查必要工具和脚本
-for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND"; do
+for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_SALVO" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND"; do
     if [ ! -e "$f" ]; then
         echo "ERROR: 缺少: $f"
         exit 1
@@ -79,58 +81,67 @@ echo "输入: $INPUT_W3X"
 echo ""
 
 # [1] 解包
-echo "[1/7] 解包 war3map.j..."
+echo "[1/8] 解包 war3map.j..."
 "$STORMTOOL" extract-one "$INPUT_W3X" "war3map.j" "$TMP_DIR/war3map.j" > /dev/null
 J="$TMP_DIR/war3map.j"
 echo "    $(wc -l < "$J") 行"
 
-# [2] TC战争践踏 + 齐射
+
+# [2] 齐射
 if grep -q "function Trig_AIML_SalvoForPlayer" "$J"; then
-    echo "[2/7] TC+齐射已存在，跳过"
+    echo "[2/8] 齐射已存在，跳过"
 else
-    echo "[2/7] 注入 TC战争践踏 + 齐射..."
+    echo "[2/8] 注入齐射..."
+    python3 "$INJECTOR_SALVO" "$J" "$J"
+fi
+
+# [3] 英雄魔法（TC践踏 + 暗影猎手）
+if grep -q "function Trig_AIML_TC_Stomp_Logic" "$J"; then
+    echo "[3/8] 英雄魔法已存在，跳过"
+else
+    echo "[3/8] 注入英雄魔法（TC践踏 + 暗影猎手）..."
     python3 "$INJECTOR_MAGIC" "$J" "$J"
 fi
 
-# [3] 集火后撤（函数注入，SalvoTick 由 creep_control 统一重写）
+# [4] 集火后撤（函数注入，SalvoTick 由 creep_control 统一重写）
 if grep -q "function Trig_AIML_FocusRetreatForPlayer" "$J"; then
-    echo "[3/7] 集火后撤已存在，跳过"
+    echo "[4/8] 集火后撤已存在，跳过"
 else
-    echo "[3/7] 注入集火后撤..."
+    echo "[4/8] 注入集火后撤..."
     python3 "$INJECTOR_FOCUS" "$J"
 fi
 
-# [4] 补刀 / 防补刀（重写 SalvoTick，必须在围杀之前）
+# [5] 补刀 / 防补刀（重写 SalvoTick，必须在围杀之前）
 if grep -q "function Trig_AIML_CreepControlForPlayer" "$J"; then
-    echo "[4/7] 补刀已存在，跳过"
+    echo "[5/8] 补刀已存在，跳过"
 else
-    echo "[4/7] 注入补刀 / 防补刀..."
+    echo "[5/8] 注入补刀 / 防补刀..."
     python3 "$INJECTOR_CREEP" "$J"
 fi
 
-# [5] 围杀（依赖 CreepControlForPlayer，必须在补刀之后）
+# [6] 围杀（依赖 CreepControlForPlayer，必须在补刀之后）
 if grep -q "function Trig_AIML_SurroundTick" "$J"; then
-    echo "[5/7] 围杀已存在，跳过"
+    echo "[6/8] 围杀已存在，跳过"
 else
-    echo "[5/7] 注入围杀..."
+    echo "[6/8] 注入围杀..."
     python3 "$INJECTOR_SURROUND" "$J"
 fi
 
-# [6] 英雄技能修复（可选）
+# [7] Debug命令（可选）
 if [ -f "$INJECTOR_DEBUG" ]; then
-    if grep -q "function Trig_AIML_HeroSkillInit" "$J"; then
-        echo "[6/7] 英雄技能已存在，跳过"
+    if grep -q "function Trig_AIML_DebugToggle" "$J"; then
+        echo "[7/8] Debug命令已存在，跳过"
     else
-        echo "[6/7] 注入英雄技能修复..."
+        echo "[7/8] 注入Debug命令..."
         python3 "$INJECTOR_DEBUG" "$J"
     fi
 else
-    echo "[6/7] inject_debug.py 不存在，跳过"
+    echo "[7/8] inject_debug.py 不存在，跳过"
 fi
 
-# [7] pjass 语法检查
+# [8] pjass 语法检查
 if [ -f "$PJASS" ] && [ -f "$COMMON_J" ] && [ -f "$BLIZZARD_J" ]; then
-    echo "[7/7] pjass 语法检查..."
+    echo "[8/8] pjass 语法检查..."
     ERRORS=$("$PJASS" "$COMMON_J" "$BLIZZARD_J" "$J" 2>&1 | grep -c "$(basename "$J"):" || true)
     if [ "$ERRORS" -gt 0 ]; then
         echo "ERROR: $ERRORS 个语法错误:"
@@ -139,7 +150,7 @@ if [ -f "$PJASS" ] && [ -f "$COMMON_J" ] && [ -f "$BLIZZARD_J" ]; then
     fi
     echo "    0 errors ✓"
 else
-    echo "[7/7] pjass 不可用，跳过语法检查"
+    echo "[8/8] pjass 不可用，跳过语法检查"
 fi
 
 # 打包 Reforged
