@@ -429,7 +429,7 @@ function Trig_AIML_SalvoInit takes nothing returns nothing
     set udg_aiml_SalvoArmyG = CreateGroup()
     set udg_aiml_SalvoRangedG = CreateGroup()
     set t = CreateTrigger()
-    call TriggerRegisterTimerEvent(t, 0.50, true)
+    call TriggerRegisterTimerEvent(t, 0.10, true)
     call TriggerAddAction(t, function Trig_AIML_SalvoTick)
 endfunction
 
