@@ -15,7 +15,7 @@
 #   [3] 集火后撤                inject_ai_focus_retreat.py
 #   [4] 围杀                    inject_ai_surround.py
 #   [5] 补刀(重写SalvoTick)     inject_ai_creep_control.py
-#   [6] 英雄技能修复（可选）     inject_hero_skills.py
+#   [6] 英雄技能修复（可选）     inject_debug.py
 
 set -euo pipefail
 
@@ -30,7 +30,7 @@ INJECTOR_MAGIC="$SCRIPT_DIR/inject_hero_magic.py"
 INJECTOR_FOCUS="$SCRIPT_DIR/inject_ai_focus_retreat.py"
 INJECTOR_CREEP="$SCRIPT_DIR/inject_ai_creep_control.py"
 INJECTOR_SURROUND="$SCRIPT_DIR/inject_ai_surround.py"
-INJECTOR_HERO="$SCRIPT_DIR/inject_hero_skills.py"
+INJECTOR_DEBUG="$SCRIPT_DIR/inject_debug.py"
 REPACK="$SCRIPT_DIR/tools/repack"
 HEADER_BIN="$SCRIPT_DIR/../base-1.27/base-1.27.w3x"  # 1.27 header source (stable, do not delete)
 DOO_DG="$SCRIPT_DIR/tools/doo_downgrade.py"
@@ -117,15 +117,15 @@ else
 fi
 
 # [6] 英雄技能修复（可选）
-if [ -f "$INJECTOR_HERO" ]; then
+if [ -f "$INJECTOR_DEBUG" ]; then
     if grep -q "function Trig_AIML_HeroSkillInit" "$J"; then
         echo "[6/7] 英雄技能已存在，跳过"
     else
         echo "[6/7] 注入英雄技能修复..."
-        python3 "$INJECTOR_HERO" "$J"
+        python3 "$INJECTOR_DEBUG" "$J"
     fi
 else
-    echo "[6/7] inject_hero_skills.py 不存在，跳过"
+    echo "[6/7] inject_debug.py 不存在，跳过"
 fi
 
 # [7] pjass 语法检查
