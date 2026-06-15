@@ -26,6 +26,7 @@ Prerequisites: inject_creep_control.py must have already been run
 """
 
 import sys
+from ai_config import SURROUND_STILL_THRESHOLD, SURROUND_STILL_TICKS
 
 
 def main():
@@ -337,9 +338,9 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
     set udg_aiml_SurroundTargetY = ty
     set ddx = tx - udg_aiml_SurroundPrevX
     set ddy = ty - udg_aiml_SurroundPrevY
-    if ddx * ddx + ddy * ddy < 2500.0 then
+    if ddx * ddx + ddy * ddy < __SURROUND_STILL_THRESHOLD__ then
         set udg_aiml_SurroundStillTicks = udg_aiml_SurroundStillTicks + 1
-        if udg_aiml_SurroundStillTicks >= 6 then
+        if udg_aiml_SurroundStillTicks >= __SURROUND_STILL_TICKS__ then
             set udg_aiml_SurroundAttacking = true
         endif
     else
@@ -386,7 +387,10 @@ endfunction
     if idx2 == -1:
         print("ERROR: cannot find Trig_AIML_SalvoTick")
         sys.exit(1)
-    src = src[:idx2] + SURROUND_FUNCTIONS.replace("\n", nl) + src[idx2:]
+    funcs_text = SURROUND_FUNCTIONS
+    funcs_text = funcs_text.replace("__SURROUND_STILL_THRESHOLD__", f"{SURROUND_STILL_THRESHOLD:.1f}")
+    funcs_text = funcs_text.replace("__SURROUND_STILL_TICKS__", str(SURROUND_STILL_TICKS))
+    src = src[:idx2] + funcs_text.replace("\n", nl) + src[idx2:]
     print("[V39] inserted surround functions")
 
     # ------------------------------------------------------------------ #
