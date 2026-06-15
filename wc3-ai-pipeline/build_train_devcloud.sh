@@ -11,7 +11,7 @@
 #   <output-prefix>-1.27.w3x
 #
 # 注入顺序（5项功能）:
-#   [2] TC战争践踏 + 齐射       inject_tc_stomp_salvo.py
+#   [2] TC战争践踏 + 齐射       inject_hero_magic.py
 #   [3] 集火后撤                inject_ai_focus_retreat.py
 #   [4] 围杀                    inject_ai_surround.py
 #   [5] 补刀(重写SalvoTick)     inject_ai_creep_control.py
@@ -26,7 +26,7 @@ PJASS="$SCRIPT_DIR/tools/pjass"
 COMMON_J="$SCRIPT_DIR/refs/common-127-clean.j"
 BLIZZARD_J="$SCRIPT_DIR/refs/Blizzard.j"
 
-INJECTOR_TC="$SCRIPT_DIR/inject_tc_stomp_salvo.py"
+INJECTOR_MAGIC="$SCRIPT_DIR/inject_hero_magic.py"
 INJECTOR_FOCUS="$SCRIPT_DIR/inject_ai_focus_retreat.py"
 INJECTOR_CREEP="$SCRIPT_DIR/inject_ai_creep_control.py"
 INJECTOR_SURROUND="$SCRIPT_DIR/inject_ai_surround.py"
@@ -60,7 +60,7 @@ OUT_REFORGED="$_DIR_REFORGED/${_BASENAME}-Reforged.w3x"
 OUT_127="$_DIR_127/${_BASENAME}-1.27.w3x"
 
 # 检查必要工具和脚本
-for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_TC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND"; do
+for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND"; do
     if [ ! -e "$f" ]; then
         echo "ERROR: 缺少: $f"
         exit 1
@@ -89,7 +89,7 @@ if grep -q "function Trig_AIML_SalvoForPlayer" "$J"; then
     echo "[2/7] TC+齐射已存在，跳过"
 else
     echo "[2/7] 注入 TC战争践踏 + 齐射..."
-    python3 "$INJECTOR_TC" "$J" "$J"
+    python3 "$INJECTOR_MAGIC" "$J" "$J"
 fi
 
 # [3] 集火后撤（函数注入，SalvoTick 由 creep_control 统一重写）

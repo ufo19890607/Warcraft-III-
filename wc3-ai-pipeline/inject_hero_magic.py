@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
-inject_aiml_v2.py - V18 (TC stomp + ranged SALVO with custom whitelist)
+inject_hero_magic.py - TC stomp + ranged SALVO + Shadow Hunter AI
 
 Inject:
   1. TC smart war stomp (replaces dumb stomp Funcs)
   2. Ranged-force concentrated salvo with custom unit whitelist
+  3. Shadow Hunter AI (0.1s tick):
+     - hex: cast on enemy Death Knight only
+     - healingwave: cast when any ally hero HP drops >= 15% in one tick
 
 Custom whitelist (per windyu UD-vs-all training preferences):
   Human:   hrif (riflemen), hgry (gryphon), hgyr (flying machine - actually not ranged?)
@@ -110,7 +113,16 @@ AIML_GLOBALS = """    // [AIML] shared globals
     real    udg_aiml_SalvoBestHp = 0.00
     real    udg_aiml_SalvoBestHeroHp = 0.00
     unit    udg_aiml_SalvoPicked = null
-    unit    udg_aiml_SalvoPickedHero = null"""
+    unit    udg_aiml_SalvoPickedHero = null
+    // [HERO-MAGIC] Shadow Hunter AI globals
+    real    udg_sh_HeroPrevHp1 = 0.0
+    real    udg_sh_HeroPrevHp2 = 0.0
+    real    udg_sh_HeroPrevHp3 = 0.0
+    real    udg_sh_HeroPrevHp4 = 0.0
+    unit    udg_sh_HeroUnit1   = null
+    unit    udg_sh_HeroUnit2   = null
+    unit    udg_sh_HeroUnit3   = null
+    unit    udg_sh_HeroUnit4   = null"""
 
 
 # ---- Functions block (TC stomp + Salvo) ----
@@ -421,6 +433,169 @@ function Trig_AIML_SalvoInit takes nothing returns nothing
     call TriggerAddAction(t, function Trig_AIML_SalvoTick)
 endfunction
 
+//===========================================================================
+// [HERO-MAGIC] Shadow Hunter AI - hex on DK, healingwave on HP-drop hero
+//===========================================================================
+// Scan allied heroes, record HP, detect drop this tick
+function Trig_AIML_SH_ScanHeroes takes player p returns nothing
+    local group g = CreateGroup()
+    local unit u
+    local integer i = 0
+    call GroupEnumUnitsOfPlayer(g, p, null)
+    loop
+        set u = FirstOfGroup(g)
+        exitwhen u == null
+        call GroupRemoveUnit(g, u)
+        if IsUnitType(u, UNIT_TYPE_HERO) and not IsUnitType(u, UNIT_TYPE_DEAD) then
+            set i = i + 1
+            if i == 1 then
+                set udg_sh_HeroUnit1 = u
+            elseif i == 2 then
+                set udg_sh_HeroUnit2 = u
+            elseif i == 3 then
+                set udg_sh_HeroUnit3 = u
+            elseif i == 4 then
+                set udg_sh_HeroUnit4 = u
+            endif
+        endif
+    endloop
+    call DestroyGroup(g)
+    set g = null
+endfunction
+
+// Find ally hero with largest HP drop (>=15%)
+function Trig_AIML_SH_FindHealTarget takes nothing returns unit
+    local unit best = null
+    local real bestDrop = 0.0
+    local real maxHp
+    local real curHp
+    local real drop
+    // hero1
+    if udg_sh_HeroUnit1 != null and not IsUnitType(udg_sh_HeroUnit1, UNIT_TYPE_DEAD) then
+        set maxHp = GetUnitState(udg_sh_HeroUnit1, UNIT_STATE_MAX_LIFE)
+        set curHp = GetUnitState(udg_sh_HeroUnit1, UNIT_STATE_LIFE)
+        if maxHp > 0.0 then
+            set drop = udg_sh_HeroPrevHp1 - curHp
+            if drop >= maxHp * 0.15 and drop > bestDrop then
+                set bestDrop = drop
+                set best = udg_sh_HeroUnit1
+            endif
+        endif
+        set udg_sh_HeroPrevHp1 = curHp
+    endif
+    // hero2
+    if udg_sh_HeroUnit2 != null and not IsUnitType(udg_sh_HeroUnit2, UNIT_TYPE_DEAD) then
+        set maxHp = GetUnitState(udg_sh_HeroUnit2, UNIT_STATE_MAX_LIFE)
+        set curHp = GetUnitState(udg_sh_HeroUnit2, UNIT_STATE_LIFE)
+        if maxHp > 0.0 then
+            set drop = udg_sh_HeroPrevHp2 - curHp
+            if drop >= maxHp * 0.15 and drop > bestDrop then
+                set bestDrop = drop
+                set best = udg_sh_HeroUnit2
+            endif
+        endif
+        set udg_sh_HeroPrevHp2 = curHp
+    endif
+    // hero3
+    if udg_sh_HeroUnit3 != null and not IsUnitType(udg_sh_HeroUnit3, UNIT_TYPE_DEAD) then
+        set maxHp = GetUnitState(udg_sh_HeroUnit3, UNIT_STATE_MAX_LIFE)
+        set curHp = GetUnitState(udg_sh_HeroUnit3, UNIT_STATE_LIFE)
+        if maxHp > 0.0 then
+            set drop = udg_sh_HeroPrevHp3 - curHp
+            if drop >= maxHp * 0.15 and drop > bestDrop then
+                set bestDrop = drop
+                set best = udg_sh_HeroUnit3
+            endif
+        endif
+        set udg_sh_HeroPrevHp3 = curHp
+    endif
+    // hero4
+    if udg_sh_HeroUnit4 != null and not IsUnitType(udg_sh_HeroUnit4, UNIT_TYPE_DEAD) then
+        set maxHp = GetUnitState(udg_sh_HeroUnit4, UNIT_STATE_MAX_LIFE)
+        set curHp = GetUnitState(udg_sh_HeroUnit4, UNIT_STATE_LIFE)
+        if maxHp > 0.0 then
+            set drop = udg_sh_HeroPrevHp4 - curHp
+            if drop >= maxHp * 0.15 and drop > bestDrop then
+                set bestDrop = drop
+                set best = udg_sh_HeroUnit4
+            endif
+        endif
+        set udg_sh_HeroPrevHp4 = curHp
+    endif
+    return best
+endfunction
+
+function Trig_AIML_SH_IsDK takes nothing returns boolean
+    return GetUnitTypeId(GetFilterUnit()) == 'Udea' and not IsUnitType(GetFilterUnit(), UNIT_TYPE_DEAD)
+endfunction
+
+function Trig_AIML_SH_IsOshd takes nothing returns boolean
+    return GetUnitTypeId(GetFilterUnit()) == 'Oshd' and not IsUnitType(GetFilterUnit(), UNIT_TYPE_DEAD)
+endfunction
+
+// Execute Shadow Hunter AI for one unit
+function Trig_AIML_SH_ActForUnit takes unit sh, player ownP, player enemyP returns nothing
+    local unit dk
+    local unit healTgt
+    local group g
+    if sh == null or IsUnitType(sh, UNIT_TYPE_DEAD) then
+        return
+    endif
+    // hex: target enemy Death Knight 'Udea', cast if enough mana
+    if GetUnitState(sh, UNIT_STATE_MANA) >= 75.0 then
+        set g = CreateGroup()
+        call GroupEnumUnitsOfPlayer(g, enemyP, Condition(function Trig_AIML_SH_IsDK))
+        set dk = FirstOfGroup(g)
+        call DestroyGroup(g)
+        set g = null
+        if dk != null and not IsUnitType(dk, UNIT_TYPE_DEAD) then
+            call IssueTargetOrder(sh, "hex", dk)
+            set dk = null
+            return
+        endif
+        set dk = null
+    endif
+    // healingwave: check ally hero HP drop >= 15%
+    set healTgt = Trig_AIML_SH_FindHealTarget()
+    if healTgt != null then
+        if GetUnitState(sh, UNIT_STATE_MANA) >= 65.0 then
+            call IssueTargetOrder(sh, "healingwave", healTgt)
+        endif
+    endif
+    set healTgt = null
+endfunction
+
+function Trig_AIML_SH_Tick takes nothing returns nothing
+    local unit sh1
+    local unit sh2
+    local group g
+    // Shadow Hunter for Player(0)
+    set g = CreateGroup()
+    call GroupEnumUnitsOfPlayer(g, Player(0), Condition(function Trig_AIML_SH_IsOshd))
+    set sh1 = FirstOfGroup(g)
+    call DestroyGroup(g)
+    set g = null
+    call Trig_AIML_SH_ScanHeroes(Player(0))
+    call Trig_AIML_SH_ActForUnit(sh1, Player(0), Player(1))
+    set sh1 = null
+    // Shadow Hunter for Player(1)
+    set g = CreateGroup()
+    call GroupEnumUnitsOfPlayer(g, Player(1), Condition(function Trig_AIML_SH_IsOshd))
+    set sh2 = FirstOfGroup(g)
+    call DestroyGroup(g)
+    set g = null
+    call Trig_AIML_SH_ScanHeroes(Player(1))
+    call Trig_AIML_SH_ActForUnit(sh2, Player(1), Player(0))
+    set sh2 = null
+endfunction
+
+function Trig_AIML_SH_Init takes nothing returns nothing
+    local trigger t = CreateTrigger()
+    call TriggerRegisterTimerEvent(t, 0.10, true)
+    call TriggerAddAction(t, function Trig_AIML_SH_Tick)
+    set t = null
+endfunction
+
 """
 
 
@@ -495,25 +670,50 @@ def inject(in_path, out_path):
     funcs = funcs.replace("\n", nl)
     src = src[:idx_after] + funcs + src[idx_after:]
 
-    # 4) Hook main() with SalvoInit
+    # 4) Hook main() with SalvoInit + SH_Init
     main_pat = re.compile(
         r'function main takes nothing returns nothing' + re.escape(nl)
         + r'(.*?)' + re.escape(nl) + r'endfunction',
         re.DOTALL,
     )
     m_main = main_pat.search(src)
-    if m_main and "call Trig_AIML_SalvoInit()" not in src:
+    if m_main:
         body = m_main.group(1)
-        new_main = (
-            f"function main takes nothing returns nothing{nl}"
-            f"{body}{nl}"
-            f"    call Trig_AIML_SalvoInit(){nl}"
+        hooks = ""
+        if "call Trig_AIML_SalvoInit()" not in src:
+            hooks += f"    call Trig_AIML_SalvoInit(){nl}"
+        if "call Trig_AIML_SH_Init()" not in src:
+            hooks += f"    call Trig_AIML_SH_Init(){nl}"
+        if hooks:
+            new_main = (
+                f"function main takes nothing returns nothing{nl}"
+                f"{body}{nl}"
+                f"{hooks}"
+                f"endfunction"
+            )
+            src = src[: m_main.start()] + new_main + src[m_main.end():]
+            print("hooked main: SalvoInit + SH_Init")
+
+    # 5) Clear original Func007A hex+healingwave body (both players)
+    for player_idx in ["1", "2"]:
+        func_name = f"Trig_Computer{player_idx}Combat_AI_Func007A"
+        marker = f"function {func_name} takes nothing returns nothing"
+        idx7 = src.find(marker)
+        if idx7 == -1:
+            print(f"WARN: {func_name} not found, skipping")
+            continue
+        end7 = src.find("endfunction", idx7)
+        if end7 == -1:
+            continue
+        new_func = (
+            f"function {func_name} takes nothing returns nothing{nl}"
+            f"    // [HERO-MAGIC] Shadow Hunter AI handled by Trig_AIML_SH_Tick{nl}"
             f"endfunction"
         )
-        src = src[: m_main.start()] + new_main + src[m_main.end():]
-        print("hooked main: SalvoInit")
+        src = src[:idx7] + new_func + src[end7 + len("endfunction"):]
+        print(f"cleared {func_name}")
 
-    # 5) Write out
+    # 6) Write out
     with open(out_path, "wb") as f:
         f.write(src.encode("latin-1"))
     print(f"OK -> {out_path} ({len(src)} bytes)")
