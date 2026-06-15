@@ -44,6 +44,12 @@ def main():
         marker = "boolean udg_aiml_DebugMode"
         idx = src.find(marker)
     if idx == -1:
+        marker = "unit    udg_aiml_LastFireTarget"
+        idx = src.find(marker)
+    if idx == -1:
+        marker = "unit    udg_sh_HeroUnit4"
+        idx = src.find(marker)
+    if idx == -1:
         print("ERROR: cannot find globals insertion point for focus retreat")
         sys.exit(1)
     eol = src.index(nl, idx)

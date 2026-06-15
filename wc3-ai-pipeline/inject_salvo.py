@@ -87,6 +87,7 @@ SALVO_GLOBALS = """    // [AIML-SALVO] state (V18, custom whitelist)
     real    udg_aiml_SalvoBestHeroHp = 0.00
     unit    udg_aiml_SalvoPicked = null
     unit    udg_aiml_SalvoPickedHero = null
+    boolean udg_aiml_DebugMode = false
     unit    udg_aiml_LastFireTarget = null"""
 
 
