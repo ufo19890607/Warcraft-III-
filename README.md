@@ -21,8 +21,9 @@ cd /data/ufo/Warcraft-III/wc3-ai-pipeline/
 | 4 | 集火后撤保护 | `inject_ai_focus_retreat.py` | — |
 | 5 | 补刀 / 防补刀（Round 1） | `inject_ai_creep_control.py` | `-creep` |
 | 6 | 围杀（Round 1） | `inject_ai_surround.py` | `-surround` |
-| 7 | Debug 开关 | `inject_debug.py` | `-debug` |
-| 8 | pjass 语法检查 + 打包 | — | — |
+| 7 | 剑圣逃脱（BM Escape） | `inject_ai_blademaster.py` | — |
+| 8 | Debug 开关 | `inject_debug.py` | `-debug` |
+| 9 | pjass 语法检查 + 打包 | — | — |
 
 ## Timer 架构
 
@@ -59,6 +60,46 @@ DK 移速 ~270 码/秒，0.3s tick 下每 tick 移动 ~81 码。
 - 远程单位集火目标英雄
 - `'Oshd'`（暗影猎手）已从远程英雄白名单移除
 
+
+## 剑圣逃脱 AI 详情（inject_ai_blademaster.py）
+
+### 状态机
+
+| 状态值 | 含义 |
+|---|---|
+| 0 | NORMAL（正常 / 冷却中）|
+| 1 | WAIT（疾风步后撤退中）|
+
+safeTicks 一变量两用：>=0 时为 WAIT 安全计数；<0 时为 NORMAL 1s 冷却倒数（-10 步进到 0）。
+
+### 触发流程
+
+每 0.1s tick 检查：NORMAL + safeTicks>=0 + 本tick掉血>=maxHP×15%
+- 疾风步 OK：背向 enemyHero 方向 600码退路 → 进 WAIT（waitTick=0）
+- 疾风步 CD/没蓝：直接 AttackNearest，safeTicks=-10，不进 WAIT
+
+### WAIT 状态
+
+- tick 1-3（min-run guard，0.3s）：强制 retreat，不计 safeTick
+- tick 4 起：drop<=100 则 safeTick+1，否则归零
+- safeTick>=5：STRIKE — 强制破隐 + IssueTargetOrder attack 独占该 tick
+- 整个 WAIT 窗口约 0.8s（0.3s 跑路 + 0.5s 计数）
+
+### NORMAL 冷却期维持攻击
+
+safeTicks -10→0 的 1s 内，每 3 tick（0.3s）补发一次 AttackNearest，
+防止破隐后 BM 等母调度接管期间站着不动。
+
+### 关键踩坑记录
+
+| 问题 | 原因 | 解法 |
+|---|---|---|
+| safeTick>=5 但 BM 不攻击 | retreat 和 attack 同 tick 打架，引擎只执行 retreat | safeTick>=5 时不发 retreat，attack 独占该 tick |
+| IssueTargetOrder attack 后 BM 不破隐 | AI 单位不会自动因 attack 指令破隐 | UnitRemoveBuffs(bm, true, false) 强制移除所有正面 buff |
+| UnitRemoveAbility(Bwkb) 无效 | 移除技能而非 buff，类型不同 | 改用 UnitRemoveBuffs |
+| drop 出现负数 | 回血时 prevHp < curHp | clamp: drop = max(drop, 0) |
+| STRIKE 后 BM 站着不动 | NORMAL 冷却期无攻击指令，母调度 1s 间隔太长 | 冷却期每 0.3s 补发 AttackNearest |
+
 ## 关键配置文件
 
 | 文件 | 用途 |
@@ -77,6 +118,7 @@ wc3-ai-pipeline/
   inject_ai_focus_retreat.py  ← 集火后撤
   inject_ai_creep_control.py  ← 补刀 / 防补刀 + CreepTick独立timer
   inject_ai_surround.py       ← 围杀 + SurroundTimerTick独立timer
+  inject_ai_blademaster.py    ← 剑圣逃脱 BM Escape AI
   inject_debug.py             ← Debug命令（-debug）
   inject_ai_intercept.py      ← 卡位拦截（实验性，未纳入流水线）
   deprecated/                 ← 废弃脚本（仅供参考）

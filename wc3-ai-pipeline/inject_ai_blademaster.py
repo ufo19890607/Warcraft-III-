@@ -3,10 +3,13 @@
 inject_ai_blademaster.py — Blademaster (剑圣) Escape AI
 
 Injects BM escape logic into war3map.j:
-- Detects HP drop >= 15% per tick -> triggers escape (mirror image > windwalk > smart retreat)
+- Detects HP drop >= 15% per tick -> triggers windwalk -> smart retreat 600 yards
 - WAIT state: maintains retreat order every tick (0.1s) to override mother scheduler (1s)
-- Returns to NORMAL after 10 consecutive ticks (~1s) with no significant damage
-- Re-engages nearest lowest-HP enemy within 1200 range
+- Returns to NORMAL after 3-tick min-run guard + 5 consecutive safe ticks (drop <= 100)
+- On re-engage: attack order breaks windwalk -> gains windwalk crit bonus on first hit
+- Retreat order is NOT issued on the same tick as re-engage (avoids order collision)
+- If windwalk on CD / no mana, attacks directly without entering WAIT
+- NORMAL state has 1s cooldown before next EVADE (safeTicks=-10)
 
 Hooks into HeroMagic 0.1s timer (SH_Tick endfunction).
 """
@@ -30,7 +33,9 @@ BM_GLOBALS = """
     real    udg_bm_RetreatX1   = 0.0
     real    udg_bm_RetreatY1   = 0.0
     real    udg_bm_RetreatX2   = 0.0
-    real    udg_bm_RetreatY2   = 0.0"""
+    real    udg_bm_RetreatY2   = 0.0
+    integer udg_bm_WaitTick1   = 0
+    integer udg_bm_WaitTick2   = 0"""
 
 # ─────────────────────────────────────────────────────────────────────
 # JASS functions
@@ -73,10 +78,15 @@ function Trig_AIML_BM_FindEnemyHero takes player enemyP returns unit
     return null
 endfunction
 
-function Trig_AIML_BM_TryCast takes unit bm returns nothing
-    if IssueImmediateOrder(bm, "mirrorimage") == false then
-        call IssueImmediateOrder(bm, "windwalk")
+function Trig_AIML_BM_TryCast takes unit bm returns boolean
+    local boolean ww
+    set ww = IssueImmediateOrder(bm, "windwalk")
+    if ww then
+        call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM] windwalk OK|r")
+    else
+        call DisplayTextToForce(GetPlayersAll(), "|cffff0000[BM] windwalk CD/no mana!|r")
     endif
+    return ww
 endfunction
 
 function Trig_AIML_BM_UpdateRetreat takes unit bm, unit enemyHero, integer idx returns nothing
@@ -98,8 +108,8 @@ function Trig_AIML_BM_UpdateRetreat takes unit bm, unit enemyHero, integer idx r
     if len < 1.0 then
         set len = 1.0
     endif
-    set rx = bx + vx / len * 1000.0
-    set ry = by + vy / len * 1000.0
+    set rx = bx + vx / len * 600.0
+    set ry = by + vy / len * 600.0
     if idx == 0 then
         set udg_bm_RetreatX1 = rx
         set udg_bm_RetreatY1 = ry
@@ -107,6 +117,7 @@ function Trig_AIML_BM_UpdateRetreat takes unit bm, unit enemyHero, integer idx r
         set udg_bm_RetreatX2 = rx
         set udg_bm_RetreatY2 = ry
     endif
+    call DisplayTextToForce(GetPlayersAll(), "|cff88ccff[BM] retreat to (" + I2S(R2I(rx)) + "," + I2S(R2I(ry)) + ") dist=600|r")
     call IssuePointOrder(bm, "smart", rx, ry)
 endfunction
 
@@ -147,10 +158,20 @@ function Trig_AIML_BM_AttackNearest takes unit bm, player enemyP returns nothing
     endloop
     call DestroyGroup(g)
     set g = null
+    // Force-break windwalk: UnitRemoveBuffs removes all positive buffs (windwalk is positive)
+    // This works regardless of the exact buff rawcode, and is safe even when not invisible
+    if IsUnitInvisible(bm, enemyP) then
+        call UnitRemoveBuffs(bm, true, false)
+        call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] forced invis break via UnitRemoveBuffs|r")
+    endif
     if nearBest != null then
         call IssueTargetOrder(bm, "attack", nearBest)
+        call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM] STRIKE target=" + GetUnitName(nearBest) + " hp=" + I2S(R2I(GetUnitState(nearBest, UNIT_STATE_LIFE))) + "/" + I2S(R2I(GetUnitState(nearBest, UNIT_STATE_MAX_LIFE))) + " (near600)|r")
     elseif best != null then
         call IssueTargetOrder(bm, "attack", best)
+        call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM] STRIKE target=" + GetUnitName(best) + " hp=" + I2S(R2I(GetUnitState(best, UNIT_STATE_LIFE))) + "/" + I2S(R2I(GetUnitState(best, UNIT_STATE_MAX_LIFE))) + " (best1200)|r")
+    else
+        call DisplayTextToForce(GetPlayersAll(), "|cffff0000[BM] STRIKE no target in 1200!|r")
     endif
     set best = null
     set nearBest = null
@@ -165,6 +186,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
     local real drop
     local integer state
     local integer safeTicks
+    local integer waitTick
     set bm = Trig_AIML_BM_FindUnit(myP)
     if bm == null then
         return
@@ -179,78 +201,142 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
         set prevHp = udg_bm_PrevHp1
         set state = udg_bm_State1
         set safeTicks = udg_bm_SafeTicks1
+        set waitTick = udg_bm_WaitTick1
     else
         set prevHp = udg_bm_PrevHp2
         set state = udg_bm_State2
         set safeTicks = udg_bm_SafeTicks2
+        set waitTick = udg_bm_WaitTick2
     endif
     if prevHp <= 0.0 then
         set prevHp = curHp
     endif
     set drop = prevHp - curHp
+    if drop < 0.0 then
+        set drop = 0.0
+    endif
     if idx == 0 then
         set udg_bm_PrevHp1 = curHp
     else
         set udg_bm_PrevHp2 = curHp
     endif
-    // ── EVADE trigger ──
-    if drop >= maxHp * 0.15 then
-        call Trig_AIML_BM_TryCast(bm)
-        set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
-        call Trig_AIML_BM_UpdateRetreat(bm, enemyHero, idx)
-        if idx == 0 then
-            set udg_bm_State1 = 1
-            set udg_bm_SafeTicks1 = 0
+    // ── EVADE trigger (only when cooldown expired) ──
+    if state == 0 and safeTicks >= 0 and drop >= maxHp * 0.15 then
+        call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] EVADE! hp=" + I2S(R2I(curHp)) + "/" + I2S(R2I(maxHp)) + " (drop " + I2S(R2I(drop)) + ")|r")
+        if Trig_AIML_BM_TryCast(bm) then
+            // Windwalk success -> enter WAIT, reset waitTick for min-run guard
+            set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
+            call Trig_AIML_BM_UpdateRetreat(bm, enemyHero, idx)
+            if idx == 0 then
+                set udg_bm_State1 = 1
+                set udg_bm_SafeTicks1 = 0
+                set udg_bm_WaitTick1 = 0
+            else
+                set udg_bm_State2 = 1
+                set udg_bm_SafeTicks2 = 0
+                set udg_bm_WaitTick2 = 0
+            endif
+            set enemyHero = null
         else
-            set udg_bm_State2 = 1
-            set udg_bm_SafeTicks2 = 0
+            // Windwalk CD/no mana -> attack directly, no WAIT
+            call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] windwalk CD/no mana, attack directly!|r")
+            call Trig_AIML_BM_AttackNearest(bm, enemyP)
+            if idx == 0 then
+                set udg_bm_SafeTicks1 = -10
+            else
+                set udg_bm_SafeTicks2 = -10
+            endif
         endif
-        set enemyHero = null
         set bm = null
         return
     endif
     // ── WAIT state ──
     if state == 1 then
-        if drop < maxHp * 0.02 then
-            set safeTicks = safeTicks + 1
+        set waitTick = waitTick + 1
+        if idx == 0 then
+            set udg_bm_WaitTick1 = waitTick
         else
-            set safeTicks = 0
-            call Trig_AIML_BM_TryCast(bm)
-            set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
-            call Trig_AIML_BM_UpdateRetreat(bm, enemyHero, idx)
-            set enemyHero = null
+            set udg_bm_WaitTick2 = waitTick
         endif
-        // Maintain retreat order every tick to override mother scheduler
-        if safeTicks < 10 then
+        call DisplayTextToForce(GetPlayersAll(), "|cff88ccff[BM] WAIT wt=" + I2S(waitTick) + " safe=" + I2S(safeTicks) + " hp=" + I2S(R2I(curHp)) + " drop=" + I2S(R2I(drop)) + "|r")
+        // Min-run guard: first 3 ticks (0.3s) always retreat, do not count safeTicks
+        // This ensures BM runs some distance before striking back
+        if waitTick <= 3 then
             if idx == 0 then
                 call IssuePointOrder(bm, "smart", udg_bm_RetreatX1, udg_bm_RetreatY1)
             else
                 call IssuePointOrder(bm, "smart", udg_bm_RetreatX2, udg_bm_RetreatY2)
             endif
+            set bm = null
+            return
+        endif
+        // After min-run: maintain retreat order every tick to override mother scheduler
+        // Count safe ticks: HP drop <= 100 per tick (under windwalk, drop ~0, counts quickly)
+        if drop <= 100.0 then
+            set safeTicks = safeTicks + 1
+        else
+            set safeTicks = 0
         endif
         if idx == 0 then
             set udg_bm_SafeTicks1 = safeTicks
         else
             set udg_bm_SafeTicks2 = safeTicks
         endif
-        if safeTicks >= 10 then
+        if safeTicks >= 5 then
+            // Re-engage: IssueTargetOrder(attack) breaks windwalk invisibility immediately
+            // and gains windwalk critical strike bonus on first hit
+            call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] WAIT->STRIKE! break windwalk safe=" + I2S(safeTicks) + " wt=" + I2S(waitTick) + "|r")
             if idx == 0 then
                 set udg_bm_State1 = 0
+                set udg_bm_SafeTicks1 = -10
             else
                 set udg_bm_State2 = 0
+                set udg_bm_SafeTicks2 = -10
             endif
+            // Do NOT issue retreat order this tick — let attack be the only order
             call Trig_AIML_BM_AttackNearest(bm, enemyP)
+        else
+            // Still waiting: maintain retreat order
+            if idx == 0 then
+                call IssuePointOrder(bm, "smart", udg_bm_RetreatX1, udg_bm_RetreatY1)
+            else
+                call IssuePointOrder(bm, "smart", udg_bm_RetreatX2, udg_bm_RetreatY2)
+            endif
         endif
         set bm = null
         return
     endif
-    // ── NORMAL: do nothing ──
+    // ── NORMAL: count cooldown + maintain attack ──
+    if safeTicks < 0 then
+        set safeTicks = safeTicks + 1
+        if idx == 0 then
+            set udg_bm_SafeTicks1 = safeTicks
+        else
+            set udg_bm_SafeTicks2 = safeTicks
+        endif
+        // Re-issue attack every 3 ticks (0.3s) during cooldown to fill the gap
+        // between our STRIKE order and the mother scheduler's next 1s cycle
+        if ModuloInteger(safeTicks, 3) == 0 then
+            call Trig_AIML_BM_AttackNearest(bm, enemyP)
+        endif
+    endif
     set bm = null
 endfunction
 
 function Trig_AIML_BM_Tick takes nothing returns nothing
-    call Trig_AIML_BM_TickForPlayer(Player(0), Player(1), 0)
-    call Trig_AIML_BM_TickForPlayer(Player(1), Player(0), 1)
+    local player aiP
+    local player enemyP
+    // Find which player is computer-controlled (has the BM)
+    if GetPlayerController(Player(0)) == MAP_CONTROL_COMPUTER then
+        set aiP    = Player(0)
+        set enemyP = Player(1)
+    else
+        set aiP    = Player(1)
+        set enemyP = Player(0)
+    endif
+    call Trig_AIML_BM_TickForPlayer(aiP, enemyP, 0)
+    set aiP    = null
+    set enemyP = null
 endfunction
 """
 
@@ -260,6 +346,36 @@ def detect_newline(src_bytes):
         return "\r\n"
     return "\n"
 
+
+
+# -- BM Skill Learning: wk>cr>ww>cr>ww>cr>ww (windwalk + crit only, no mirror image) --
+def patch_bm_skill_learn(j_text):
+    nl = chr(10)
+    q = chr(39)
+    old_bm = (
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOwk" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOcr" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOcr" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOmi" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOcr" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOww" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOwk" + q + " )"
+    )
+    new_bm = (
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOwk" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOcr" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOww" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOcr" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOww" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOcr" + q + " )" + nl +
+        "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOww" + q + " )"
+    )
+    if old_bm not in j_text:
+        print("[BM-ESCAPE] WARNING: BM skill learning pattern not found, skip")
+        return j_text
+    j_text = j_text.replace(old_bm, new_bm)
+    print("[BM-ESCAPE] patched BM skill learning: wk>cr>ww>cr>ww>cr>ww (no mirror image)")
+    return j_text
 
 def main():
     if len(sys.argv) < 2:
@@ -314,6 +430,8 @@ def main():
             f"    set udg_bm_State2 = 0{nl}"
             f"    set udg_bm_SafeTicks1 = 0{nl}"
             f"    set udg_bm_SafeTicks2 = 0{nl}"
+            f"    set udg_bm_WaitTick1 = 0{nl}"
+            f"    set udg_bm_WaitTick2 = 0{nl}"
             f"    set udg_bm_PrevHp1 = 0.0{nl}"
             f"    set udg_bm_PrevHp2 = 0.0{nl}"
             f"    set udg_bm_Unit1 = null{nl}"
@@ -323,6 +441,9 @@ def main():
         print("[BM-ESCAPE] added state reset to Variable Reset block")
     else:
         print("[BM-ESCAPE] WARN: Variable Reset block not found, skipping reset injection")
+
+    # 5) Patch BM skill learning order
+    src = patch_bm_skill_learn(src)
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(src)
