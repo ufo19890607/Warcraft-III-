@@ -63,42 +63,20 @@ DK 移速 ~270 码/秒，0.3s tick 下每 tick 移动 ~81 码。
 
 ## 剑圣逃脱 AI 详情（inject_ai_blademaster.py）
 
-### 状态机
+### 剑圣逃脱（inject_ai_blademaster.py）
+- **集火检测**：每 0.1s tick 检测 HP 下降 ≥ 最大血量 15%，视为被集火
+- **疾风步逃脱**：被集火后立即施放疾风步，计算背向敌方英雄方向 600 码的退路点，进入 WAIT 状态
+  - 前 3 tick（0.3s）强制执行退路指令（min-run guard），确保 BM 先拉开距离
+  - 此后每 tick 检测 HP 下降：连续 5 tick 下降 ≤ 100（约 0.5s 安全）后主动出击
+- **疾风步 CD / 没蓝**：跳过 WAIT，直接攻击，进入 1s 冷却
+- **NORMAL 冷却**：出击后进入 1s 冷却（safeTicks -10 → 0），期间每 0.3s 补发攻击指令，防止母调度接管前出现空窗
 
-| 状态值 | 含义 |
-|---|---|
-| 0 | NORMAL（正常 / 冷却中）|
-| 1 | WAIT（疾风步后撤退中）|
-
-safeTicks 一变量两用：>=0 时为 WAIT 安全计数；<0 时为 NORMAL 1s 冷却倒数（-10 步进到 0）。
-
-### 触发流程
-
-每 0.1s tick 检查：NORMAL + safeTicks>=0 + 本tick掉血>=maxHP×15%
-- 疾风步 OK：背向 enemyHero 方向 600码退路 → 进 WAIT（waitTick=0）
-- 疾风步 CD/没蓝：直接 AttackNearest，safeTicks=-10，不进 WAIT
-
-### WAIT 状态
-
-- tick 1-3（min-run guard，0.3s）：强制 retreat，不计 safeTick
-- tick 4 起：drop<=100 则 safeTick+1，否则归零
-- safeTick>=5：STRIKE — 强制破隐 + IssueTargetOrder attack 独占该 tick
-- 整个 WAIT 窗口约 0.8s（0.3s 跑路 + 0.5s 计数）
-
-### NORMAL 冷却期维持攻击
-
-safeTicks -10→0 的 1s 内，每 3 tick（0.3s）补发一次 AttackNearest，
-防止破隐后 BM 等母调度接管期间站着不动。
-
-### 关键踩坑记录
-
-| 问题 | 原因 | 解法 |
-|---|---|---|
-| safeTick>=5 但 BM 不攻击 | retreat 和 attack 同 tick 打架，引擎只执行 retreat | safeTick>=5 时不发 retreat，attack 独占该 tick |
-| IssueTargetOrder attack 后 BM 不破隐 | AI 单位不会自动因 attack 指令破隐 | UnitRemoveBuffs(bm, true, false) 强制移除所有正面 buff |
-| UnitRemoveAbility(Bwkb) 无效 | 移除技能而非 buff，类型不同 | 改用 UnitRemoveBuffs |
-| drop 出现负数 | 回血时 prevHp < curHp | clamp: drop = max(drop, 0) |
-| STRIKE 后 BM 站着不动 | NORMAL 冷却期无攻击指令，母调度 1s 间隔太长 | 冷却期每 0.3s 补发 AttackNearest |
+### 剑圣主动出击（inject_ai_blademaster.py）
+- **强制破隐**：`UnitRemoveBuffs(bm, true, false)` 移除所有正面 buff，主动解除疾风步隐身
+  - AI 单位不会因 attack 指令自动破隐，必须手动移除 buff（`UnitRemoveAbility` 无效，它移除技能而非 buff）
+- **目标选择**：优先 600 码内最低血量单位；其次 1200 码内最低血量单位
+- **疾风步暴击加成**：破隐后首次攻击自动触发疾风步暴击，attack 指令独占该 tick（不与 retreat 指令共存，避免引擎只执行 retreat）
+- **加点顺序**：`wk > cr > ww > cr > ww > cr > ww`（疾风步优先，去掉幻像）
 
 ## 关键配置文件
 
