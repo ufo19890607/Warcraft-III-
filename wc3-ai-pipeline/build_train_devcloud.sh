@@ -10,13 +10,14 @@
 #   <output-prefix>-Reforged.w3x
 #   <output-prefix>-1.27.w3x
 #
-# 注入顺序（6项功能）:
+# 注入顺序（7项功能）:
 #   [2] 齐射                    inject_salvo.py
 #   [3] 英雄魔法(TC践踏+暗影猎手) inject_hero_magic.py
 #   [4] 集火后撤                inject_ai_focus_retreat.py
 #   [5] 补刀(重写SalvoTick)     inject_ai_creep_control.py
 #   [6] 围杀                    inject_ai_surround.py
-#   [7] Debug命令（可选）       inject_debug.py
+#   [7] 剑圣逃脱                inject_ai_blademaster.py
+#   [8] Debug命令（可选）       inject_debug.py
 
 set -euo pipefail
 
@@ -32,6 +33,7 @@ INJECTOR_MAGIC="$SCRIPT_DIR/inject_hero_magic.py"
 INJECTOR_FOCUS="$SCRIPT_DIR/inject_ai_focus_retreat.py"
 INJECTOR_CREEP="$SCRIPT_DIR/inject_ai_creep_control.py"
 INJECTOR_SURROUND="$SCRIPT_DIR/inject_ai_surround.py"
+INJECTOR_BM="$SCRIPT_DIR/inject_ai_blademaster.py"
 INJECTOR_DEBUG="$SCRIPT_DIR/inject_debug.py"
 REPACK="$SCRIPT_DIR/tools/repack"
 HEADER_BIN="$SCRIPT_DIR/../base-1.27/base-1.27.w3x"  # 1.27 header source (stable, do not delete)
@@ -52,8 +54,6 @@ fi
 
 INPUT_W3X="$(realpath "$1")"
 OUT_PREFIX="$2"
-# 自动将产物放到各自目录：converted-reforged / converted-1.27
-# 目录始终相对于脚本所在位置的上一级（即 Warcraft-III/）
 _BASENAME="$(basename "$OUT_PREFIX")"
 _DIR_REFORGED="$SCRIPT_DIR/../converted-reforged"
 _DIR_127="$SCRIPT_DIR/../converted-1.27"
@@ -62,7 +62,7 @@ OUT_REFORGED="$_DIR_REFORGED/${_BASENAME}-Reforged.w3x"
 OUT_127="$_DIR_127/${_BASENAME}-1.27.w3x"
 
 # 检查必要工具和脚本
-for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_SALVO" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND"; do
+for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_SALVO" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND" "$INJECTOR_BM"; do
     if [ ! -e "$f" ]; then
         echo "ERROR: 缺少: $f"
         exit 1
@@ -81,67 +81,74 @@ echo "输入: $INPUT_W3X"
 echo ""
 
 # [1] 解包
-echo "[1/8] 解包 war3map.j..."
+echo "[1/9] 解包 war3map.j..."
 "$STORMTOOL" extract-one "$INPUT_W3X" "war3map.j" "$TMP_DIR/war3map.j" > /dev/null
 J="$TMP_DIR/war3map.j"
 echo "    $(wc -l < "$J") 行"
 
-
 # [2] 齐射
 if grep -q "function Trig_AIML_SalvoForPlayer" "$J"; then
-    echo "[2/8] 齐射已存在，跳过"
+    echo "[2/9] 齐射已存在，跳过"
 else
-    echo "[2/8] 注入齐射..."
+    echo "[2/9] 注入齐射..."
     python3 "$INJECTOR_SALVO" "$J" "$J"
 fi
 
 # [3] 英雄魔法（TC践踏 + 暗影猎手）
 if grep -q "function Trig_AIML_TC_Stomp_Logic" "$J"; then
-    echo "[3/8] 英雄魔法已存在，跳过"
+    echo "[3/9] 英雄魔法已存在，跳过"
 else
-    echo "[3/8] 注入英雄魔法（TC践踏 + 暗影猎手）..."
+    echo "[3/9] 注入英雄魔法（TC践踏 + 暗影猎手）..."
     python3 "$INJECTOR_MAGIC" "$J" "$J"
 fi
 
-# [4] 集火后撤（函数注入，SalvoTick 由 creep_control 统一重写）
+# [4] 集火后撤
 if grep -q "function Trig_AIML_FocusRetreatForPlayer" "$J"; then
-    echo "[4/8] 集火后撤已存在，跳过"
+    echo "[4/9] 集火后撤已存在，跳过"
 else
-    echo "[4/8] 注入集火后撤..."
+    echo "[4/9] 注入集火后撤..."
     python3 "$INJECTOR_FOCUS" "$J"
 fi
 
-# [5] 补刀 / 防补刀（重写 SalvoTick，必须在围杀之前）
+# [5] 补刀 / 防补刀
 if grep -q "function Trig_AIML_CreepControlForPlayer" "$J"; then
-    echo "[5/8] 补刀已存在，跳过"
+    echo "[5/9] 补刀已存在，跳过"
 else
-    echo "[5/8] 注入补刀 / 防补刀..."
+    echo "[5/9] 注入补刀 / 防补刀..."
     python3 "$INJECTOR_CREEP" "$J"
 fi
 
-# [6] 围杀（依赖 CreepControlForPlayer，必须在补刀之后）
+# [6] 围杀
 if grep -q "function Trig_AIML_SurroundTick" "$J"; then
-    echo "[6/8] 围杀已存在，跳过"
+    echo "[6/9] 围杀已存在，跳过"
 else
-    echo "[6/8] 注入围杀..."
+    echo "[6/9] 注入围杀..."
     python3 "$INJECTOR_SURROUND" "$J"
 fi
 
-# [7] Debug命令（可选）
+# [7] 剑圣逃脱（依赖 SH_Tick，必须在英雄魔法之后）
+if grep -q "function Trig_AIML_BM_Tick" "$J"; then
+    echo "[7/9] 剑圣逃脱已存在，跳过"
+else
+    echo "[7/9] 注入剑圣逃脱..."
+    python3 "$INJECTOR_BM" "$J"
+fi
+
+# [8] Debug命令（可选）
 if [ -f "$INJECTOR_DEBUG" ]; then
     if grep -q "function Trig_AIML_DebugToggle" "$J"; then
-        echo "[7/8] Debug命令已存在，跳过"
+        echo "[8/9] Debug命令已存在，跳过"
     else
-        echo "[7/8] 注入Debug命令..."
+        echo "[8/9] 注入Debug命令..."
         python3 "$INJECTOR_DEBUG" "$J"
     fi
 else
-    echo "[7/8] inject_debug.py 不存在，跳过"
+    echo "[8/9] inject_debug.py 不存在，跳过"
 fi
 
-# [8] pjass 语法检查
+# [9] pjass 语法检查
 if [ -f "$PJASS" ] && [ -f "$COMMON_J" ] && [ -f "$BLIZZARD_J" ]; then
-    echo "[8/8] pjass 语法检查..."
+    echo "[9/9] pjass 语法检查..."
     ERRORS=$("$PJASS" "$COMMON_J" "$BLIZZARD_J" "$J" 2>&1 | grep -c "$(basename "$J"):" || true)
     if [ "$ERRORS" -gt 0 ]; then
         echo "ERROR: $ERRORS 个语法错误:"
@@ -150,7 +157,7 @@ if [ -f "$PJASS" ] && [ -f "$COMMON_J" ] && [ -f "$BLIZZARD_J" ]; then
     fi
     echo "    0 errors ✓"
 else
-    echo "[8/8] pjass 不可用，跳过语法检查"
+    echo "[9/9] pjass 不可用，跳过语法检查"
 fi
 
 # 打包 Reforged
@@ -159,20 +166,17 @@ echo "打包 Reforged..."
 "$STORMPATCH" "$INPUT_W3X" "$OUT_REFORGED" "war3map.j" "$J" > /dev/null
 echo "    $OUT_REFORGED ($(du -h "$OUT_REFORGED" | cut -f1))"
 
-# 打包 1.27（完整 reforged→1.27 降级，用验证过的 repack + hm3w_header.bin）
+# 打包 1.27
 echo "打包 1.27..."
 DG_DIR="$TMP_DIR/downgrade"
 mkdir -p "$DG_DIR"
 
-# Step 1: 解包 reforged .w3x
 "$STORMTOOL" extract "$INPUT_W3X" "$DG_DIR" > /dev/null
 
-# Step 2: 删除 reforged-only 文件
 rm -f "$DG_DIR/conversation.json"
 rm -f "$DG_DIR/war3mapSkin.w3a" "$DG_DIR/war3mapSkin.w3h" "$DG_DIR/war3mapSkin.w3q" "$DG_DIR/war3mapSkin.w3u"
 find "$DG_DIR" -maxdepth 1 -name "Scripts" -type d -exec rm -rf {} + 2>/dev/null || true
 
-# Step 3: 降级各数据文件
 [ -f "$DG_DIR/war3map.doo" ]      && python3 "$DOO_DG"   "$DG_DIR/war3map.doo"      "$DG_DIR/war3map.doo.tmp"      && mv "$DG_DIR/war3map.doo.tmp"      "$DG_DIR/war3map.doo"
 [ -f "$DG_DIR/war3mapUnits.doo" ] && python3 "$UNITS_DG" "$DG_DIR/war3mapUnits.doo" "$DG_DIR/war3mapUnits.doo.tmp" && mv "$DG_DIR/war3mapUnits.doo.tmp" "$DG_DIR/war3mapUnits.doo"
 [ -f "$DG_DIR/war3map.w3i" ]      && python3 "$W3I_DG"   "$DG_DIR/war3map.w3i"      "$DG_DIR/war3map.w3i.tmp"      && mv "$DG_DIR/war3map.w3i.tmp"      "$DG_DIR/war3map.w3i"
@@ -181,20 +185,18 @@ for _ext in w3a w3h w3q w3u; do
 done
 [ -f "$DG_DIR/war3map.w3e" ]      && python3 "$W3E_DG"  "$DG_DIR/war3map.w3e"       "$DG_DIR/war3map.w3e.tmp"       && mv "$DG_DIR/war3map.w3e.tmp"       "$DG_DIR/war3map.w3e"
 
-# Step 4: 替换 war3map.j（注入后版本，先做 BlzCreateUnitWithSkin 替换）
 if grep -q 'BlzCreateUnitWithSkin' "$J"; then
     sed 's/BlzCreateUnitWithSkin(\([^,]*\),\([^,]*\),\([^,]*\),\([^,]*\),\([^,]*\),[^)]*)/CreateUnit(\1,\2,\3,\4,\5)/g' "$J" > "$DG_DIR/war3map.j"
 else
     cp "$J" "$DG_DIR/war3map.j"
 fi
 
-# Step 5: repack with hm3w_header.bin（验证过的方式）
 "$REPACK" "$DG_DIR" "$HEADER_BIN" "$OUT_127"
 echo "    $OUT_127 ($(du -h $OUT_127 | cut -f1))"
 
 echo ""
 echo "=========================================="
 echo " 完成!"
-echo " 功能：TC践踏 | 齐射 | 集火后撤 | 补刀 | 围杀"
+echo " 功能：TC践踏 | 齐射 | 集火后撤 | 补刀 | 围杀 | 剑圣逃脱"
 echo " 命令：-debug | -creep | -surround"
 echo "=========================================="
