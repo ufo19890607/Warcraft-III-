@@ -1,27 +1,29 @@
 #!/usr/bin/env python3
 """
-inject_ai_blademaster.py — Blademaster (剑圣) 最小化测试版
+inject_ai_blademaster.py — Blademaster (剑圣) 最小化测试版 v2
 
-逻辑（无状态机）：
+逻辑（疾风步穿身突进）：
   每0.1s tick:
-    1. 找到BM（type='Obla'，AI玩家方）
-    2. 若疾风步可用 -> 释放windwalk -> UnitRemoveBuffs解除隐身 -> attack DK
-    3. 用冷却变量避免每tick重复释放（释放后等待N tick）
+    1. 找BM(Obla) + DK(Udea)
+    2. 突进中(Dashing=1):
+       - 距DK < 100码 -> UnitRemoveBuffs -> attack DK -> Dashing=0
+       - 距DK >= 100码 -> move靠近DK (隐身穿身)
+    3. 非突进:
+       - 疾风步可用 -> 释放windwalk -> Dashing=1 -> move靠近DK
+       - 疾风步fail -> attack DK directly
 
 挂在 HeroMagic 0.1s timer (SH_Tick endfunction)。
-
-完全抛弃旧的 EVADE / HUNT / 状态机逻辑。
 """
 
 import sys
 
 BM_GLOBALS = """
     // [BM-MIN] Blademaster minimal test globals
-    integer udg_bm_Cooldown1 = 0"""
+    integer udg_bm_Dashing1 = 0"""
 
 BM_FUNCTIONS = """
 // ================================================================
-// [BM-MIN] Blademaster minimal: windwalk -> remove buff -> attack DK
+// [BM-MIN] Blademaster: windwalk -> dash to DK -> remove buff -> attack
 // ================================================================
 
 function Trig_AIML_BM_IsObla takes nothing returns boolean
@@ -60,6 +62,9 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     local unit bm
     local unit dk
     local boolean ww
+    local real dx
+    local real dy
+    local real dist
     set bm = Trig_AIML_BM_FindBM(myP)
     if bm == null or IsUnitDeadBJ(bm) then
         set bm = null
@@ -71,28 +76,35 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         set bm = null
         return
     endif
-    // 冷却中：等待，期间持续攻击DK
-    if udg_bm_Cooldown1 > 0 then
-        set udg_bm_Cooldown1 = udg_bm_Cooldown1 - 1
-        // 解除隐身 + 攻击DK
-        if IsUnitInvisible(bm, enemyP) then
+    set dx = GetUnitX(dk) - GetUnitX(bm)
+    set dy = GetUnitY(dk) - GetUnitY(bm)
+    set dist = SquareRoot(dx * dx + dy * dy)
+    // ── 突进中 ──
+    if udg_bm_Dashing1 == 1 then
+        if dist < 100.0 then
+            // 到达DK身边 -> 解隐身 -> 攻击
             call UnitRemoveBuffs(bm, true, false)
-            call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM-MIN] invis break|r")
+            call IssueTargetOrder(bm, "attack", dk)
+            call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM-MIN] reached DK (dist=" + I2S(R2I(dist)) + ") -> STRIKE hp=" + I2S(R2I(GetUnitState(dk, UNIT_STATE_LIFE))) + "|r")
+            set udg_bm_Dashing1 = 0
+        else
+            // 继续隐身穿身靠近
+            call IssuePointOrder(bm, "move", GetUnitX(dk), GetUnitY(dk))
+            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM-MIN] dashing dist=" + I2S(R2I(dist)) + " Boro=" + I2S(GetUnitAbilityLevel(bm, 'Boro')) + "|r")
         endif
-        call IssueTargetOrder(bm, "attack", dk)
-        call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM-MIN] attack DK hp=" + I2S(R2I(GetUnitState(dk, UNIT_STATE_LIFE))) + " cd=" + I2S(udg_bm_Cooldown1) + "|r")
         set bm = null
         set dk = null
         return
     endif
-    // 冷却好了：尝试释放疾风步
+    // ── 非突进：尝试疾风步 ──
     set ww = IssueImmediateOrder(bm, "windwalk")
     if ww then
-        call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM-MIN] windwalk OK -> set cd=30|r")
-        set udg_bm_Cooldown1 = 30
+        call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM-MIN] windwalk OK -> dash to DK (dist=" + I2S(R2I(dist)) + ")|r")
+        set udg_bm_Dashing1 = 1
+        call IssuePointOrder(bm, "move", GetUnitX(dk), GetUnitY(dk))
     else
-        // 没蓝/CD：直接攻击DK
-        call DisplayTextToForce(GetPlayersAll(), "|cffffff00[BM-MIN] windwalk fail -> attack DK directly|r")
+        // 没蓝/CD -> 直接攻击DK
+        call DisplayTextToForce(GetPlayersAll(), "|cffffff00[BM-MIN] windwalk fail -> attack DK directly (dist=" + I2S(R2I(dist)) + ")|r")
         call IssueTargetOrder(bm, "attack", dk)
     endif
     set bm = null
@@ -166,7 +178,6 @@ def main():
         print("[BM-MIN] already injected, skipping")
         return
 
-    # 1) globals
     eg = "endglobals" + nl
     if eg not in src:
         raise SystemExit("ERROR: no 'endglobals' found")
@@ -174,7 +185,6 @@ def main():
     src = src[:idx] + BM_GLOBALS.replace("\n", nl) + nl + src[idx:]
     print("[BM-MIN] inserted globals")
 
-    # 2) functions before SH_Tick
     marker = "function Trig_AIML_SH_Tick takes nothing returns nothing"
     idx_marker = src.find(marker)
     if idx_marker == -1:
@@ -182,7 +192,6 @@ def main():
     src = src[:idx_marker] + BM_FUNCTIONS.replace("\n", nl) + nl + src[idx_marker:]
     print("[BM-MIN] inserted functions")
 
-    # 3) hook into SH_Tick
     sh_start = src.find("function Trig_AIML_SH_Tick takes nothing returns nothing")
     sh_end = src.find("endfunction", sh_start + 10)
     if sh_end == -1:
@@ -190,23 +199,21 @@ def main():
     src = src[:sh_end] + f"    call Trig_AIML_BM_Tick(){nl}" + src[sh_end:]
     print("[BM-MIN] hooked BM_Tick into SH_Tick")
 
-    # 4) variable reset
     reset_marker = "// Variable Reset"
     idx_reset = src.find(reset_marker)
     if idx_reset != -1:
         eol = src.index(nl, idx_reset)
-        reset_code = f"    set udg_bm_Cooldown1 = 0{nl}"
+        reset_code = f"    set udg_bm_Dashing1 = 0{nl}"
         src = src[:eol + len(nl)] + reset_code + src[eol + len(nl):]
         print("[BM-MIN] added state reset to Variable Reset block")
     else:
         print("[BM-MIN] WARN: Variable Reset block not found, skipping reset injection")
 
-    # 5) skill learn
     src = patch_bm_skill_learn(src)
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(src)
-    print(f"[BM-MIN] Blademaster minimal AI injected into {path}")
+    print(f"[BM-MIN] Blademaster minimal AI (dash) injected into {path}")
 
 
 if __name__ == "__main__":
