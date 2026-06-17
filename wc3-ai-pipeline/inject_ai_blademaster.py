@@ -209,7 +209,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         set dx = GetUnitX(target) - GetUnitX(bm)
         set dy = GetUnitY(target) - GetUnitY(bm)
         set dist = SquareRoot(dx * dx + dy * dy)
-        if dist < 100.0 then
+        if dist < 50.0 then
             call UnitRemoveBuffs(bm, true, false)
             call IssueTargetOrder(bm, "attack", target)
             call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] DASH reached (d=" + I2S(R2I(dist)) + ") STRIKE " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
