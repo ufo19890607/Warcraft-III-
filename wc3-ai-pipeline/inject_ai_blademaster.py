@@ -12,7 +12,7 @@ EVADE (被集火逃跑):
 - If windwalk on CD / no mana, attacks directly without entering WAIT
 
 HUNT (主动猎杀残血英雄):
-- In NORMAL state, after EVADE check fails: scan for enemy hero dist<1000 and HP<300
+- In NORMAL state (incl. cooldown), after EVADE check fails: scan for enemy hero dist<2000 and HP<300
 - TryCast windwalk success -> UnitRemoveBuffs -> attack hero (no WAIT)
 - TryCast failure (CD/no mana) -> attack hero directly (plain attack)
 - No WAIT in either case; windwalk CD is natural rate-limiter
@@ -24,7 +24,8 @@ AttackNearest 目标优先级:
 - 3. 无目标 -> 不发指令 (母调度接管)
 
 NORMAL冷却 (safeTicks=-10):
-- After EVADE/HUNT, 1s cooldown; every 3 ticks re-issue AttackNearest to fill mother scheduler gap
+- After EVADE/HUNT, 1s cooldown; HUNT still active during cooldown
+- Every 3 ticks re-issue AttackNearest to fill mother scheduler gap
 
 Skill learning: wk>cr>ww>cr>ww>cr>ww (no mirror image)
 
@@ -110,7 +111,7 @@ function Trig_AIML_BM_FindHuntTarget takes unit bm, player enemyP returns unit
             if GetUnitState(u, UNIT_STATE_LIFE) < 300.0 then
                 set dx = GetUnitX(u) - bx
                 set dy = GetUnitY(u) - by
-                if dx * dx + dy * dy < 1000000.0 then  // 1000码
+                if dx * dx + dy * dy < 4000000.0 then  // 2000码
                     call DestroyGroup(g)
                     set g = null
                     return u
@@ -327,6 +328,28 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
             set udg_bm_SafeTicks1 = safeTicks
         else
             set udg_bm_SafeTicks2 = safeTicks
+        endif
+        // 冷却期内HUNT仍然有效（HUNT距离2000，优先级高于补刀）
+        set huntTarget = Trig_AIML_BM_FindHuntTarget(bm, enemyP)
+        if huntTarget != null then
+            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT(cd)! target=" + GetUnitName(huntTarget) + " hp=" + I2S(R2I(GetUnitState(huntTarget, UNIT_STATE_LIFE))) + "|r")
+            if Trig_AIML_BM_TryCast(bm) then
+                call UnitRemoveBuffs(bm, true, false)
+                call IssueTargetOrder(bm, "attack", huntTarget)
+                call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT(cd) STRIKE (windwalk crit!)|r")
+            else
+                call UnitRemoveBuffs(bm, true, false)
+                call IssueTargetOrder(bm, "attack", huntTarget)
+                call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT(cd) STRIKE (plain A)|r")
+            endif
+            if idx == 0 then
+                set udg_bm_SafeTicks1 = -10
+            else
+                set udg_bm_SafeTicks2 = -10
+            endif
+            set huntTarget = null
+            set bm = null
+            return
         endif
         // 每3tick补一次攻击指令，填母调度1s空档
         if ModuloInteger(safeTicks, 3) == 0 then
