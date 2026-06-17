@@ -468,8 +468,12 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
                     set udg_bm_HuntTarget2 = huntTarget
                 endif
             else
-                // windwalk CD/没蓝 -> 不进HUNT，等CD
-                call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT(cd) WW not ready, wait CD|r")
+                // windwalk CD/没蓝 -> 重置-10，母调度继续接管
+                if idx == 0 then
+                    set udg_bm_SafeTicks1 = -10
+                else
+                    set udg_bm_SafeTicks2 = -10
+                endif
             endif
             set huntTarget = null
         endif
@@ -526,8 +530,13 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
                 set udg_bm_HuntTarget2 = huntTarget
             endif
         else
-            // windwalk CD/没蓝 -> 不进HUNT，等CD
-            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT WW not ready, wait CD|r")
+            // windwalk CD/没蓝 -> safeTicks=-10，母调度接管1s
+            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT WW not ready -> safeTicks=-10|r")
+            if idx == 0 then
+                set udg_bm_SafeTicks1 = -10
+            else
+                set udg_bm_SafeTicks2 = -10
+            endif
         endif
         set huntTarget = null
     endif
