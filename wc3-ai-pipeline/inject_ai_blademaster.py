@@ -172,6 +172,35 @@ function Trig_AIML_BM_UpdateRetreat takes unit bm, unit enemyHero, integer idx r
     call IssuePointOrder(bm, "smart", rx, ry)
 endfunction
 
+function Trig_AIML_BM_AttackDK takes unit bm, player enemyP returns nothing
+    local group g = CreateGroup()
+    local unit u
+    local unit dk = null
+    // 先解除隐身
+    if IsUnitInvisible(bm, enemyP) then
+        call UnitRemoveBuffs(bm, true, false)
+        call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] invis break|r")
+    endif
+    call GroupEnumUnitsOfPlayer(g, enemyP, null)
+    loop
+        set u = FirstOfGroup(g)
+        exitwhen u == null
+        if GetUnitTypeId(u) == 'Udea' and not IsUnitDeadBJ(u) then
+            set dk = u
+        endif
+        call GroupRemoveUnit(g, u)
+    endloop
+    call DestroyGroup(g)
+    set g = null
+    if dk != null then
+        call IssueTargetOrder(bm, "attack", dk)
+        call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] POST-WW ATTACK DK hp=" + I2S(R2I(GetUnitState(dk, UNIT_STATE_LIFE))) + "|r")
+    else
+        call DisplayTextToForce(GetPlayersAll(), "|cffff0000[BM] POST-WW DK not found!|r")
+    endif
+    set dk = null
+endfunction
+
 function Trig_AIML_BM_AttackNearest takes unit bm, player enemyP returns nothing
     local group g = CreateGroup()
     local unit u
@@ -394,9 +423,8 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
         endif
         // 疾风步buff消失 -> 解隐身，发起攻击
         if GetUnitAbilityLevel(bm, 'Boro') == 0 then
-            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT windwalk expired -> STRIKE " + GetUnitName(huntTarget) + " hp=" + I2S(R2I(GetUnitState(huntTarget, UNIT_STATE_LIFE))) + "|r")
-            call UnitRemoveBuffs(bm, true, false)
-            call IssueTargetOrder(bm, "attack", huntTarget)
+            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT windwalk expired -> ATTACK DK|r")
+            call Trig_AIML_BM_AttackDK(bm, enemyP)
             if idx == 0 then
                 set udg_bm_State1 = 0
                 set udg_bm_SafeTicks1 = -10
@@ -470,7 +498,8 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
             endif
             set enemyHero = null
         else
-            call Trig_AIML_BM_AttackNearest(bm, enemyP)
+            call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] EVADE WW fail -> ATTACK DK|r")
+            call Trig_AIML_BM_AttackDK(bm, enemyP)
             if idx == 0 then
                 set udg_bm_SafeTicks1 = -10
             else
