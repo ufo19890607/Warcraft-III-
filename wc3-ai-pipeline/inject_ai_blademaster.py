@@ -2,30 +2,32 @@
 """
 inject_ai_blademaster.py — Blademaster (剑圣) Escape + Hunt AI
 
-Injects BM escape + hunt logic into war3map.j:
+State machine:
+  state=0  NORMAL
+  state=1  WAIT   (EVADE撤退中)
+  state=2  HUNT   (疾风步穿身突进残血英雄)
 
 EVADE (被集火逃跑):
-- Detects HP drop >= 15% per tick -> triggers windwalk -> smart retreat 600 yards
-- WAIT state: maintains retreat order every tick (0.1s) to override mother scheduler (1s)
-- Returns to NORMAL after 3-tick min-run guard + 5 consecutive safe ticks (drop <= 100)
-- On re-engage: UnitRemoveBuffs breaks windwalk -> attack order issued
-- If windwalk on CD / no mana, attacks directly without entering WAIT
+- Detects HP drop >= 15% per tick -> TryCast windwalk
+  - success -> smart retreat 600 yards, enter WAIT
+  - fail    -> AttackNearest, safeTicks=-10
+- WAIT: 3-tick min-run guard, then 5 safe ticks (drop<=100) -> NORMAL
+- On NORMAL re-engage: UnitRemoveBuffs + AttackNearest
 
 HUNT (主动猎杀残血英雄):
-- In NORMAL state (incl. cooldown), after EVADE check fails: scan for enemy hero dist<2000 and HP<300
-- TryCast windwalk success -> UnitRemoveBuffs -> attack hero (no WAIT)
-- TryCast failure (CD/no mana) -> attack hero directly (plain attack)
-- No WAIT in either case; windwalk CD is natural rate-limiter
+- NORMAL (safeTicks>=0 or <0): scan enemy hero dist<2000 and HP<300
+- TryCast windwalk success -> enter HUNT(state=2), smart move toward target
+- TryCast fail (CD/no mana) -> do nothing, wait for CD
+- HUNT state: every tick issue smart toward huntTarget
+  - Boro buff gone -> UnitRemoveBuffs + attack(huntTarget) -> NORMAL safeTicks=-10
+  - target dead / dist>2000 -> NORMAL safeTicks=0
+  - BM focused (drop>=15%) -> EVADE takes priority
 
 AttackNearest 目标优先级:
-- Always UnitRemoveBuffs first (break invis regardless of target)
-- 1. 600码内最低HP单位 (nearBest)
-- 2. 1200码内最低HP单位 (best, 兜底)
+- UnitRemoveBuffs first (break invis regardless)
+- 1. 600码内最低HP (nearBest)
+- 2. 1200码内最低HP (best, 兜底)
 - 3. 无目标 -> 不发指令 (母调度接管)
-
-NORMAL冷却 (safeTicks=-10):
-- After EVADE/HUNT, 1s cooldown; HUNT still active during cooldown
-- Every 3 ticks re-issue AttackNearest to fill mother scheduler gap
 
 Skill learning: wk>cr>ww>cr>ww>cr>ww (no mirror image)
 
@@ -38,28 +40,30 @@ import sys
 # JASS globals
 # ─────────────────────────────────────────────────────────────────────
 BM_GLOBALS = """
-    // [BM-ESCAPE] Blademaster escape + hunt AI globals
-    unit    udg_bm_Unit1       = null
-    unit    udg_bm_Unit2       = null
-    real    udg_bm_PrevHp1     = 0.0
-    real    udg_bm_PrevHp2     = 0.0
-    integer udg_bm_State1      = 0
-    integer udg_bm_State2      = 0
-    integer udg_bm_SafeTicks1  = 0
-    integer udg_bm_SafeTicks2  = 0
-    real    udg_bm_RetreatX1   = 0.0
-    real    udg_bm_RetreatY1   = 0.0
-    real    udg_bm_RetreatX2   = 0.0
-    real    udg_bm_RetreatY2   = 0.0
-    integer udg_bm_WaitTick1   = 0
-    integer udg_bm_WaitTick2   = 0"""
+    // [BM] Blademaster escape + hunt AI globals
+    unit    udg_bm_Unit1        = null
+    unit    udg_bm_Unit2        = null
+    real    udg_bm_PrevHp1      = 0.0
+    real    udg_bm_PrevHp2      = 0.0
+    integer udg_bm_State1       = 0
+    integer udg_bm_State2       = 0
+    integer udg_bm_SafeTicks1   = 0
+    integer udg_bm_SafeTicks2   = 0
+    real    udg_bm_RetreatX1    = 0.0
+    real    udg_bm_RetreatY1    = 0.0
+    real    udg_bm_RetreatX2    = 0.0
+    real    udg_bm_RetreatY2    = 0.0
+    integer udg_bm_WaitTick1    = 0
+    integer udg_bm_WaitTick2    = 0
+    unit    udg_bm_HuntTarget1  = null
+    unit    udg_bm_HuntTarget2  = null"""
 
 # ─────────────────────────────────────────────────────────────────────
 # JASS functions
 # ─────────────────────────────────────────────────────────────────────
 BM_FUNCTIONS = """
 // ================================================================
-// [BM-ESCAPE+HUNT] Blademaster AI  (EVADE + HUNT)
+// [BM] Blademaster AI  state=0:NORMAL  1:WAIT  2:HUNT
 // ================================================================
 
 function Trig_AIML_BM_IsObla takes nothing returns boolean
@@ -95,7 +99,7 @@ function Trig_AIML_BM_FindEnemyHero takes player enemyP returns unit
     return null
 endfunction
 
-// HUNT: 找距离<1000且HP<300的敌方英雄
+// 找距离<2000且HP<300的敌方英雄
 function Trig_AIML_BM_FindHuntTarget takes unit bm, player enemyP returns unit
     local group g = CreateGroup()
     local unit u
@@ -190,8 +194,8 @@ function Trig_AIML_BM_AttackNearest takes unit bm, player enemyP returns nothing
             set dy = GetUnitY(u) - by
             set d = dx * dx + dy * dy
             set hp = GetUnitState(u, UNIT_STATE_LIFE)
-            if d <= 1440000.0 then          // 1200码内
-                if d <= 360000.0 and hp < nearHp then   // 600码内
+            if d <= 1440000.0 then
+                if d <= 360000.0 and hp < nearHp then
                     set nearHp = hp
                     set nearBest = u
                 endif
@@ -205,7 +209,7 @@ function Trig_AIML_BM_AttackNearest takes unit bm, player enemyP returns nothing
     endloop
     call DestroyGroup(g)
     set g = null
-    // 先解除隐身，无论有无目标（防止无目标时BM永久隐身）
+    // 先解除隐身（无论有无目标）
     if IsUnitInvisible(bm, enemyP) then
         call UnitRemoveBuffs(bm, true, false)
         call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] forced invis break via UnitRemoveBuffs|r")
@@ -231,6 +235,8 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
     local real maxHp
     local real prevHp
     local real drop
+    local real dx
+    local real dy
     local integer state
     local integer safeTicks
     local integer waitTick
@@ -245,15 +251,17 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
     set curHp = GetUnitState(bm, UNIT_STATE_LIFE)
     set maxHp = GetUnitState(bm, UNIT_STATE_MAX_LIFE)
     if idx == 0 then
-        set prevHp = udg_bm_PrevHp1
-        set state = udg_bm_State1
-        set safeTicks = udg_bm_SafeTicks1
-        set waitTick = udg_bm_WaitTick1
+        set prevHp     = udg_bm_PrevHp1
+        set state      = udg_bm_State1
+        set safeTicks  = udg_bm_SafeTicks1
+        set waitTick   = udg_bm_WaitTick1
+        set huntTarget = udg_bm_HuntTarget1
     else
-        set prevHp = udg_bm_PrevHp2
-        set state = udg_bm_State2
-        set safeTicks = udg_bm_SafeTicks2
-        set waitTick = udg_bm_WaitTick2
+        set prevHp     = udg_bm_PrevHp2
+        set state      = udg_bm_State2
+        set safeTicks  = udg_bm_SafeTicks2
+        set waitTick   = udg_bm_WaitTick2
+        set huntTarget = udg_bm_HuntTarget2
     endif
     if prevHp <= 0.0 then
         set prevHp = curHp
@@ -277,7 +285,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
             set udg_bm_WaitTick2 = waitTick
         endif
         call DisplayTextToForce(GetPlayersAll(), "|cff88ccff[BM] WAIT wt=" + I2S(waitTick) + " safe=" + I2S(safeTicks) + " hp=" + I2S(R2I(curHp)) + " drop=" + I2S(R2I(drop)) + "|r")
-        // min-run guard: 前3tick强制撤退，不计safeTicks
+        // min-run guard: 前3tick强制撤退
         if waitTick <= 3 then
             if idx == 0 then
                 call IssuePointOrder(bm, "smart", udg_bm_RetreatX1, udg_bm_RetreatY1)
@@ -287,7 +295,6 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
             set bm = null
             return
         endif
-        // 计safe ticks
         if drop <= 100.0 then
             set safeTicks = safeTicks + 1
         else
@@ -299,7 +306,6 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
             set udg_bm_SafeTicks2 = safeTicks
         endif
         if safeTicks >= 5 then
-            // 5tick安全 -> 转NORMAL，攻击
             call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] WAIT->STRIKE! safe=" + I2S(safeTicks) + " wt=" + I2S(waitTick) + "|r")
             if idx == 0 then
                 set udg_bm_State1 = 0
@@ -310,7 +316,6 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
             endif
             call Trig_AIML_BM_AttackNearest(bm, enemyP)
         else
-            // 继续撤退
             if idx == 0 then
                 call IssuePointOrder(bm, "smart", udg_bm_RetreatX1, udg_bm_RetreatY1)
             else
@@ -321,7 +326,97 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
         return
     endif
 
-    // ── NORMAL冷却期 ─────────────────────────────────────────────────
+    // ── HUNT state ──────────────────────────────────────────────────
+    if state == 2 then
+        // EVADE优先：被集火则中断HUNT
+        if drop >= maxHp * 0.15 then
+            call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] HUNT interrupted by EVADE! drop=" + I2S(R2I(drop)) + "|r")
+            if Trig_AIML_BM_TryCast(bm) then
+                set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
+                call Trig_AIML_BM_UpdateRetreat(bm, enemyHero, idx)
+                if idx == 0 then
+                    set udg_bm_State1 = 1
+                    set udg_bm_SafeTicks1 = 0
+                    set udg_bm_WaitTick1 = 0
+                    set udg_bm_HuntTarget1 = null
+                else
+                    set udg_bm_State2 = 1
+                    set udg_bm_SafeTicks2 = 0
+                    set udg_bm_WaitTick2 = 0
+                    set udg_bm_HuntTarget2 = null
+                endif
+                set enemyHero = null
+            else
+                if idx == 0 then
+                    set udg_bm_State1 = 0
+                    set udg_bm_SafeTicks1 = -10
+                    set udg_bm_HuntTarget1 = null
+                else
+                    set udg_bm_State2 = 0
+                    set udg_bm_SafeTicks2 = -10
+                    set udg_bm_HuntTarget2 = null
+                endif
+                call Trig_AIML_BM_AttackNearest(bm, enemyP)
+            endif
+            set bm = null
+            return
+        endif
+        // 目标失效检测：死亡或超出2000码
+        if huntTarget == null or IsUnitDeadBJ(huntTarget) then
+            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT target dead -> NORMAL|r")
+            if idx == 0 then
+                set udg_bm_State1 = 0
+                set udg_bm_SafeTicks1 = 0
+                set udg_bm_HuntTarget1 = null
+            else
+                set udg_bm_State2 = 0
+                set udg_bm_SafeTicks2 = 0
+                set udg_bm_HuntTarget2 = null
+            endif
+            set bm = null
+            return
+        endif
+        set dx = GetUnitX(huntTarget) - GetUnitX(bm)
+        set dy = GetUnitY(huntTarget) - GetUnitY(bm)
+        if dx * dx + dy * dy > 4000000.0 then
+            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT target out of range -> NORMAL|r")
+            if idx == 0 then
+                set udg_bm_State1 = 0
+                set udg_bm_SafeTicks1 = 0
+                set udg_bm_HuntTarget1 = null
+            else
+                set udg_bm_State2 = 0
+                set udg_bm_SafeTicks2 = 0
+                set udg_bm_HuntTarget2 = null
+            endif
+            set bm = null
+            return
+        endif
+        // 疾风步buff消失 -> 解隐身，发起攻击
+        if GetUnitAbilityLevel(bm, 'Boro') == 0 then
+            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT windwalk expired -> STRIKE " + GetUnitName(huntTarget) + " hp=" + I2S(R2I(GetUnitState(huntTarget, UNIT_STATE_LIFE))) + "|r")
+            call UnitRemoveBuffs(bm, true, false)
+            call IssueTargetOrder(bm, "attack", huntTarget)
+            if idx == 0 then
+                set udg_bm_State1 = 0
+                set udg_bm_SafeTicks1 = -10
+                set udg_bm_HuntTarget1 = null
+            else
+                set udg_bm_State2 = 0
+                set udg_bm_SafeTicks2 = -10
+                set udg_bm_HuntTarget2 = null
+            endif
+            set bm = null
+            return
+        endif
+        // 疾风步仍在，持续靠近目标
+        call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT approaching " + GetUnitName(huntTarget) + " Boro=" + I2S(GetUnitAbilityLevel(bm, 'Boro')) + " hp=" + I2S(R2I(GetUnitState(huntTarget, UNIT_STATE_LIFE))) + "|r")
+        call IssuePointOrder(bm, "smart", GetUnitX(huntTarget), GetUnitY(huntTarget))
+        set bm = null
+        return
+    endif
+
+    // ── NORMAL冷却期（safeTicks < 0）──────────────────────────────
     if safeTicks < 0 then
         set safeTicks = safeTicks + 1
         if idx == 0 then
@@ -329,43 +424,39 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
         else
             set udg_bm_SafeTicks2 = safeTicks
         endif
-        // 冷却期内HUNT仍然有效（HUNT距离2000，优先级高于补刀）
+        // 冷却期内HUNT检测仍有效
         set huntTarget = Trig_AIML_BM_FindHuntTarget(bm, enemyP)
         if huntTarget != null then
             call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT(cd)! target=" + GetUnitName(huntTarget) + " hp=" + I2S(R2I(GetUnitState(huntTarget, UNIT_STATE_LIFE))) + "|r")
             if Trig_AIML_BM_TryCast(bm) then
-                call UnitRemoveBuffs(bm, true, false)
-                call IssueTargetOrder(bm, "attack", huntTarget)
-                call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT(cd) STRIKE (windwalk crit!)|r")
+                // windwalk成功 -> 进HUNT状态，靠近目标
+                call IssuePointOrder(bm, "smart", GetUnitX(huntTarget), GetUnitY(huntTarget))
+                if idx == 0 then
+                    set udg_bm_State1 = 2
+                    set udg_bm_SafeTicks1 = 0
+                    set udg_bm_HuntTarget1 = huntTarget
+                else
+                    set udg_bm_State2 = 2
+                    set udg_bm_SafeTicks2 = 0
+                    set udg_bm_HuntTarget2 = huntTarget
+                endif
             else
-                call UnitRemoveBuffs(bm, true, false)
-                call IssueTargetOrder(bm, "attack", huntTarget)
-                call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT(cd) STRIKE (plain A)|r")
-            endif
-            if idx == 0 then
-                set udg_bm_SafeTicks1 = -10
-            else
-                set udg_bm_SafeTicks2 = -10
+                // windwalk CD/没蓝 -> 不进HUNT，等CD
+                call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT(cd) WW not ready, wait CD|r")
             endif
             set huntTarget = null
-            set bm = null
-            return
         endif
-        // 每3tick补一次攻击指令，填母调度1s空档
-        if ModuloInteger(safeTicks, 3) == 0 then
-            call Trig_AIML_BM_AttackNearest(bm, enemyP)
-        endif
+        // 母调度接管，不发AttackNearest
         set bm = null
         return
     endif
 
     // ── NORMAL 主判定（safeTicks >= 0）──────────────────────────────
 
-    // ① EVADE: 被集火检测（优先级最高）
+    // ① EVADE: 被集火（优先级最高）
     if drop >= maxHp * 0.15 then
         call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] EVADE! hp=" + I2S(R2I(curHp)) + "/" + I2S(R2I(maxHp)) + " drop=" + I2S(R2I(drop)) + "|r")
         if Trig_AIML_BM_TryCast(bm) then
-            // windwalk成功 -> 进WAIT撤退
             set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
             call Trig_AIML_BM_UpdateRetreat(bm, enemyHero, idx)
             if idx == 0 then
@@ -379,8 +470,6 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
             endif
             set enemyHero = null
         else
-            // windwalk CD/没蓝 -> 直接攻击
-            call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] EVADE no WW, attack directly!|r")
             call Trig_AIML_BM_AttackNearest(bm, enemyP)
             if idx == 0 then
                 set udg_bm_SafeTicks1 = -10
@@ -392,29 +481,27 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
         return
     endif
 
-    // ② HUNT: 主动猎杀残血英雄（距离<1000，HP<300）
+    // ② HUNT: 主动猎杀残血英雄
     set huntTarget = Trig_AIML_BM_FindHuntTarget(bm, enemyP)
     if huntTarget != null then
         call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT! target=" + GetUnitName(huntTarget) + " hp=" + I2S(R2I(GetUnitState(huntTarget, UNIT_STATE_LIFE))) + "|r")
         if Trig_AIML_BM_TryCast(bm) then
-            // windwalk成功 -> 解隐身 -> attack（不进WAIT）
-            call UnitRemoveBuffs(bm, true, false)
-            call IssueTargetOrder(bm, "attack", huntTarget)
-            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT STRIKE (windwalk crit!)|r")
+            // windwalk成功 -> 进HUNT状态，靠近目标
+            call IssuePointOrder(bm, "smart", GetUnitX(huntTarget), GetUnitY(huntTarget))
+            if idx == 0 then
+                set udg_bm_State1 = 2
+                set udg_bm_SafeTicks1 = 0
+                set udg_bm_HuntTarget1 = huntTarget
+            else
+                set udg_bm_State2 = 2
+                set udg_bm_SafeTicks2 = 0
+                set udg_bm_HuntTarget2 = huntTarget
+            endif
         else
-            // windwalk CD/没蓝 -> 平A
-            call UnitRemoveBuffs(bm, true, false)
-            call IssueTargetOrder(bm, "attack", huntTarget)
-            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT STRIKE (plain A)|r")
-        endif
-        if idx == 0 then
-            set udg_bm_SafeTicks1 = -10
-        else
-            set udg_bm_SafeTicks2 = -10
+            // windwalk CD/没蓝 -> 不进HUNT，等CD
+            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT WW not ready, wait CD|r")
         endif
         set huntTarget = null
-        set bm = null
-        return
     endif
 
     set bm = null
@@ -423,7 +510,6 @@ endfunction
 function Trig_AIML_BM_Tick takes nothing returns nothing
     local player aiP
     local player enemyP
-    // 动态检测AI玩家（computer控制方）
     if GetPlayerController(Player(0)) == MAP_CONTROL_COMPUTER then
         set aiP    = Player(0)
         set enemyP = Player(1)
@@ -444,7 +530,6 @@ def detect_newline(src_bytes):
     return "\n"
 
 
-# -- BM Skill Learning: wk>cr>ww>cr>ww>cr>ww (windwalk + crit only, no mirror image) --
 def patch_bm_skill_learn(j_text):
     nl = chr(10)
     q = chr(39)
@@ -467,10 +552,10 @@ def patch_bm_skill_learn(j_text):
         "    call SelectHeroSkill( GetLastCreatedUnit(), " + q + "AOww" + q + " )"
     )
     if old_bm not in j_text:
-        print("[BM-ESCAPE] WARNING: BM skill learning pattern not found, skip")
+        print("[BM] WARNING: BM skill learning pattern not found, skip")
         return j_text
     j_text = j_text.replace(old_bm, new_bm)
-    print("[BM-ESCAPE] patched BM skill learning: wk>cr>ww>cr>ww>cr>ww (no mirror image)")
+    print("[BM] patched BM skill learning: wk>cr>ww>cr>ww>cr>ww (no mirror image)")
     return j_text
 
 
@@ -485,39 +570,35 @@ def main():
     nl = detect_newline(raw)
     src = raw.decode("utf-8")
 
-    # Guard: already injected?
     if "function Trig_AIML_BM_Tick" in src:
-        print("[BM-ESCAPE] already injected, skipping")
+        print("[BM] already injected, skipping")
         return
 
-    # 1) Inject globals before endglobals
+    # 1) globals
     eg = "endglobals" + nl
     if eg not in src:
         raise SystemExit("ERROR: no 'endglobals' found")
     idx = src.find(eg)
-    globals_text = BM_GLOBALS.replace("\n", nl) + nl
-    src = src[:idx] + globals_text + src[idx:]
-    print("[BM-ESCAPE] inserted globals")
+    src = src[:idx] + BM_GLOBALS.replace("\n", nl) + nl + src[idx:]
+    print("[BM] inserted globals")
 
-    # 2) Inject functions before SH_Tick
+    # 2) functions before SH_Tick
     marker = "function Trig_AIML_SH_Tick takes nothing returns nothing"
     idx_marker = src.find(marker)
     if idx_marker == -1:
         raise SystemExit("ERROR: cannot find Trig_AIML_SH_Tick — inject_hero_magic.py must run first")
-    funcs_text = BM_FUNCTIONS.replace("\n", nl)
-    src = src[:idx_marker] + funcs_text + nl + src[idx_marker:]
-    print("[BM-ESCAPE] inserted functions")
+    src = src[:idx_marker] + BM_FUNCTIONS.replace("\n", nl) + nl + src[idx_marker:]
+    print("[BM] inserted functions")
 
-    # 3) Hook BM_Tick into SH_Tick (before its endfunction)
-    sh_tick_start = src.find("function Trig_AIML_SH_Tick takes nothing returns nothing")
-    sh_tick_end = src.find("endfunction", sh_tick_start + 10)
-    if sh_tick_end == -1:
+    # 3) hook into SH_Tick
+    sh_start = src.find("function Trig_AIML_SH_Tick takes nothing returns nothing")
+    sh_end = src.find("endfunction", sh_start + 10)
+    if sh_end == -1:
         raise SystemExit("ERROR: cannot find SH_Tick endfunction")
-    hook_line = f"    call Trig_AIML_BM_Tick(){nl}"
-    src = src[:sh_tick_end] + hook_line + src[sh_tick_end:]
-    print("[BM-ESCAPE] hooked BM_Tick into SH_Tick")
+    src = src[:sh_end] + f"    call Trig_AIML_BM_Tick(){nl}" + src[sh_end:]
+    print("[BM] hooked BM_Tick into SH_Tick")
 
-    # 4) Add BM state reset in Variable Reset block
+    # 4) variable reset
     reset_marker = "// Variable Reset"
     idx_reset = src.find(reset_marker)
     if idx_reset != -1:
@@ -533,18 +614,20 @@ def main():
             f"    set udg_bm_PrevHp2 = 0.0{nl}"
             f"    set udg_bm_Unit1 = null{nl}"
             f"    set udg_bm_Unit2 = null{nl}"
+            f"    set udg_bm_HuntTarget1 = null{nl}"
+            f"    set udg_bm_HuntTarget2 = null{nl}"
         )
         src = src[:eol + len(nl)] + reset_code + src[eol + len(nl):]
-        print("[BM-ESCAPE] added state reset to Variable Reset block")
+        print("[BM] added state reset to Variable Reset block")
     else:
-        print("[BM-ESCAPE] WARN: Variable Reset block not found, skipping reset injection")
+        print("[BM] WARN: Variable Reset block not found, skipping reset injection")
 
-    # 5) Patch BM skill learning order
+    # 5) skill learn
     src = patch_bm_skill_learn(src)
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(src)
-    print(f"[BM-ESCAPE] Blademaster escape+hunt AI injected into {path}")
+    print(f"[BM] Blademaster AI (EVADE+HUNT state=2) injected into {path}")
 
 
 if __name__ == "__main__":
