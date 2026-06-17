@@ -85,6 +85,37 @@ function Trig_AIML_BM_FindLowestHpHero takes player enemyP returns unit
     return best
 endfunction
 
+// 找最近的敌方单位（非建筑），用于DASH目标失效时兜底
+function Trig_AIML_BM_FindNearestEnemy takes unit bm, player enemyP returns unit
+    local group g = CreateGroup()
+    local unit u
+    local unit best = null
+    local real bestD = 999999999.0
+    local real bx = GetUnitX(bm)
+    local real by = GetUnitY(bm)
+    local real dx
+    local real dy
+    local real d
+    call GroupEnumUnitsOfPlayer(g, enemyP, null)
+    loop
+        set u = FirstOfGroup(g)
+        exitwhen u == null
+        if not IsUnitDeadBJ(u) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) then
+            set dx = GetUnitX(u) - bx
+            set dy = GetUnitY(u) - by
+            set d = dx * dx + dy * dy
+            if d < bestD then
+                set bestD = d
+                set best = u
+            endif
+        endif
+        call GroupRemoveUnit(g, u)
+    endloop
+    call DestroyGroup(g)
+    set g = null
+    return best
+endfunction
+
 // HUNT触发检测: 是否存在残血英雄(<2000码, HP<300)
 function Trig_AIML_BM_HasHuntTarget takes unit bm, player enemyP returns boolean
     local group g = CreateGroup()
@@ -198,18 +229,38 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     // ── DASH state (专心突进，不检测EVADE) ──
     if state == 2 then
         set target = udg_bm_Target1
-        if target == null or IsUnitDeadBJ(target) then
-            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] DASH target dead -> NORMAL|r")
-            set udg_bm_State1 = 0
-            set udg_bm_SafeTicks1 = 0
-            set udg_bm_Target1 = null
+        // 目标失效（死亡 / 被救活脱离残血HP>=300）-> 攻击最近敌方单位，避免原地乱转
+        if target == null or IsUnitDeadBJ(target) or GetUnitState(target, UNIT_STATE_LIFE) >= 300.0 then
+            set target = Trig_AIML_BM_FindNearestEnemy(bm, enemyP)
+            if target == null then
+                call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] DASH target lost, no enemy -> NORMAL|r")
+                set udg_bm_State1 = 0
+                set udg_bm_SafeTicks1 = 0
+                set udg_bm_Target1 = null
+                set bm = null
+                return
+            endif
+            // 靠近最近敌方单位 -> 破隐 -> 攻击
+            set dx = GetUnitX(target) - GetUnitX(bm)
+            set dy = GetUnitY(target) - GetUnitY(bm)
+            set dist = SquareRoot(dx * dx + dy * dy)
+            if dist < 100.0 then
+                call UnitRemoveBuffs(bm, true, false)
+                call IssueTargetOrder(bm, "attack", target)
+                call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] DASH target lost -> STRIKE nearest " + GetUnitName(target) + " (d=" + I2S(R2I(dist)) + ")|r")
+                set udg_bm_State1 = 0
+                set udg_bm_SafeTicks1 = -10
+                set udg_bm_Target1 = null
+            else
+                call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
+            endif
             set bm = null
             return
         endif
         set dx = GetUnitX(target) - GetUnitX(bm)
         set dy = GetUnitY(target) - GetUnitY(bm)
         set dist = SquareRoot(dx * dx + dy * dy)
-        if dist < 50.0 then
+        if dist < 100.0 then
             call UnitRemoveBuffs(bm, true, false)
             call IssueTargetOrder(bm, "attack", target)
             call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] DASH reached (d=" + I2S(R2I(dist)) + ") STRIKE " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
