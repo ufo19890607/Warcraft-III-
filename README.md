@@ -61,21 +61,39 @@ DK 移速 ~270 码/秒，0.3s tick 下每 tick 移动 ~81 码。
 - `'Oshd'`（暗影猎手）已从远程英雄白名单移除
 
 
-## 剑圣逃脱 AI 详情（inject_ai_blademaster.py）
+## 剑圣 AI 详情（inject_ai_blademaster.py，V39.21 重写）
 
-### 剑圣逃脱（inject_ai_blademaster.py）
-- **集火检测**：每 0.1s tick 检测 HP 下降 ≥ 最大血量 15%，视为被集火
-- **疾风步逃脱**：被集火后立即施放疾风步，计算背向敌方英雄方向 600 码的退路点，进入 WAIT 状态
-  - 前 3 tick（0.3s）强制执行退路指令（min-run guard），确保 BM 先拉开距离
-  - 此后每 tick 检测 HP 下降：连续 5 tick 下降 ≤ 100（约 0.5s 安全）后主动出击
-- **疾风步 CD / 没蓝**：跳过 WAIT，直接攻击，进入 1s 冷却
-- **NORMAL 冷却**：出击后进入 1s 冷却（safeTicks -10 → 0），期间每 0.3s 补发攻击指令，防止母调度接管前出现空窗
+> **核心突破（V39.21）**：所有攻击都先 `move` 靠近目标到 < 100 码，再 `UnitRemoveBuffs` 破隐 + `attack`。
+> 之前所有版本失败的根因是：**隐身状态下直接对远处目标下 attack 指令，AI 单位会卡住不动**（详见 DEGRADE 坑 14）。
+> 先靠近再攻击后，剑圣可借疾风步隐身穿过人墙突进到后排残血英雄身边再现身攻击。
 
-### 剑圣主动出击（inject_ai_blademaster.py）
-- **强制破隐**：`UnitRemoveBuffs(bm, true, false)` 移除所有正面 buff，主动解除疾风步隐身
-  - AI 单位不会因 attack 指令自动破隐，必须手动移除 buff（`UnitRemoveAbility` 无效，它移除技能而非 buff）
-- **目标选择**：优先 600 码内最低血量单位；其次 1200 码内最低血量单位
-- **疾风步暴击加成**：破隐后首次攻击自动触发疾风步暴击，attack 指令独占该 tick（不与 retreat 指令共存，避免引擎只执行 retreat）
+### 统一状态机：0=NORMAL  1=WAIT(撤退)  2=DASH(突进攻击)
+- **攻击目标**：始终是敌方血量最少的英雄（`FindLowestHpHero`）
+- 每 0.1s tick 驱动（挂在 SH_Tick）
+
+### NORMAL（safeTicks ≥ 0）
+- **① EVADE（被集火）**：HP 下降 ≥ 最大血量 15%
+  - 疾风步成功 → 背向敌方英雄方向撤退 600 码 → 进 WAIT
+  - 疾风步 CD/没蓝 → 平 A 血最少英雄 + 进 1s 冷却
+- **② HUNT（主动猎杀）**：存在残血英雄（< 2000 码，HP < 300）
+  - 疾风步成功 → 进 DASH，目标 = 血最少英雄 → move 靠近
+  - 疾风步 CD/没蓝 → safeTicks = -10（母调度接管 1s）
+
+### WAIT（撤退）
+- 前 3 tick（0.3s）强制撤退（min-run guard）
+- 此后连续 5 tick HP 下降 ≤ 100（约安全）→ 撤退结束：
+  - 疾风步还在（`GetUnitAbilityLevel(bm, 'Boro') > 0`）→ 进 DASH 突进
+  - 疾风步没了 → 平 A 血最少英雄 + 进 1s 冷却
+
+### DASH（专心突进，不检测 EVADE）
+- 距目标 < 100 码 → `UnitRemoveBuffs` 破隐 → `attack` → 回 NORMAL（1s 冷却）
+- 距目标 ≥ 100 码 → `move` 靠近（隐身穿身，绝不开火打断隐身）
+- 目标死亡 → 回 NORMAL
+
+### 关键实现要点
+- **先靠近再攻击**：DASH 用 `move`（而非 smart/attack）靠近，保证隐身不被打断；只在 < 100 码才破隐攻击
+- **破隐方式**：`UnitRemoveBuffs(bm, true, false)`（移除所有正面 buff，不依赖 rawcode；`UnitRemoveAbility` 无效）
+- **疾风步暴击加成**：破隐后首次攻击自动触发疾风步暴击
 - **加点顺序**：`wk > cr > ww > cr > ww > cr > ww`（疾风步优先，去掉幻像）
 
 ## 关键配置文件

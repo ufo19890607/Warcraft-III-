@@ -277,3 +277,39 @@ if ModuloInteger(safeTicks, 3) == 0 then
     call Trig_AIML_BM_AttackNearest(bm, enemyP)
 endif
 ```
+
+---
+
+## 坑 14：隐身状态下 attack 远处目标会卡死 —— 必须"先靠近再攻击"（V39.21 核心突破）
+
+**发现时间**：2026-06-17
+
+**现象**：剑圣释放疾风步后，对残血英雄下 `IssueTargetOrder(bm, "attack", target)`（即使先 `UnitRemoveBuffs` 破隐），BM 仍然站着不动 / 原地转圈，根本不攻击。前后试了 N 个版本（EVADE 状态机、HUNT 状态机、各种破隐时机）都无法解决。
+
+**根因**：
+- AI 单位在**隐身状态**（或刚破隐的瞬间）对**距离较远**的目标下 `attack` 指令时，引擎寻路 + 破隐 + 攻击三件事冲突，导致指令静默失败，BM 卡住。
+- 之前所有方案的错误都在于：**在远距离就尝试 attack**，把"靠近"和"攻击"耦合在一条 attack 指令里，交给引擎自己处理 —— 而引擎处理不好。
+
+**修复（统一 DASH 突进执行器）**：把"靠近"和"攻击"彻底拆开，分两个阶段：
+```jass
+// 阶段1：DASH 突进 —— 只 move，绝不 attack（保持隐身穿身）
+if dist >= 100.0 then
+    call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
+// 阶段2：到达后才破隐攻击
+else
+    call UnitRemoveBuffs(bm, true, false)
+    call IssueTargetOrder(bm, "attack", target)
+endif
+```
+
+**验证**：
+```
+[BM] HUNT! target=黑暗游侠 hp=291
+[BM] windwalk OK -> DASH
+[BM] DASH reached (d=83) STRIKE 黑暗游侠 hp=281   ← 突进到83码现身攻击，成功！
+```
+
+**经验教训**：
+1. WC3 AI 单位的 attack 指令对"距离"敏感，远距离 + 隐身 = 必失败。把移动与攻击拆成两个明确阶段，用距离阈值（< 100 码）切换，是最可靠的做法。
+2. `move` 指令在 AI 单位上"绝不开火"的特性（见 README 指令行为表）正好用于隐身穿身，不会打断隐身。
+3. 这个"先靠近再攻击"模式可作为所有近战 AI 突进的通用执行器。
