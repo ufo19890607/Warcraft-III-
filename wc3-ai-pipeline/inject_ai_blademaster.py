@@ -134,8 +134,6 @@ function Trig_AIML_BM_TryCast takes unit bm returns boolean
     set ww = IssueImmediateOrder(bm, "windwalk")
     if ww then
         call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM] windwalk OK|r")
-    else
-        call DisplayTextToForce(GetPlayersAll(), "|cffff0000[BM] windwalk CD/no mana!|r")
     endif
     return ww
 endfunction
@@ -313,7 +311,9 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
         else
             set udg_bm_WaitTick2 = waitTick
         endif
-        call DisplayTextToForce(GetPlayersAll(), "|cff88ccff[BM] WAIT wt=" + I2S(waitTick) + " safe=" + I2S(safeTicks) + " hp=" + I2S(R2I(curHp)) + " drop=" + I2S(R2I(drop)) + "|r")
+        if waitTick == 1 then
+            call DisplayTextToForce(GetPlayersAll(), "|cff88ccff[BM] WAIT start hp=" + I2S(R2I(curHp)) + "/" + I2S(R2I(maxHp)) + "|r")
+        endif
         // min-run guard: 前3tick强制撤退
         if waitTick <= 3 then
             if idx == 0 then
@@ -343,7 +343,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
                 set udg_bm_State2 = 0
                 set udg_bm_SafeTicks2 = -10
             endif
-            call Trig_AIML_BM_AttackNearest(bm, enemyP)
+            call Trig_AIML_BM_AttackDK(bm, enemyP)
         else
             if idx == 0 then
                 call IssuePointOrder(bm, "smart", udg_bm_RetreatX1, udg_bm_RetreatY1)
@@ -385,7 +385,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
                     set udg_bm_SafeTicks2 = -10
                     set udg_bm_HuntTarget2 = null
                 endif
-                call Trig_AIML_BM_AttackNearest(bm, enemyP)
+                call Trig_AIML_BM_AttackDK(bm, enemyP)
             endif
             set bm = null
             return
@@ -438,7 +438,6 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP, integer idx
             return
         endif
         // 疾风步仍在，持续靠近目标
-        call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT approaching " + GetUnitName(huntTarget) + " Boro=" + I2S(GetUnitAbilityLevel(bm, 'Boro')) + " hp=" + I2S(R2I(GetUnitState(huntTarget, UNIT_STATE_LIFE))) + "|r")
         call IssuePointOrder(bm, "smart", GetUnitX(huntTarget), GetUnitY(huntTarget))
         set bm = null
         return
