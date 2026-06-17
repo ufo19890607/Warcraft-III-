@@ -263,13 +263,40 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         if dist < 100.0 then
             call UnitRemoveBuffs(bm, true, false)
             call IssueTargetOrder(bm, "attack", target)
-            call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] DASH reached (d=" + I2S(R2I(dist)) + ") STRIKE " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
-            set udg_bm_State1 = 0
-            set udg_bm_SafeTicks1 = -10
-            set udg_bm_Target1 = null
+            call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] DASH reached (d=" + I2S(R2I(dist)) + ") -> STRIKE " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
+            // 进入持续输出状态，咬住目标打
+            set udg_bm_State1 = 3
+            set udg_bm_SafeTicks1 = 0
+            // udg_bm_Target1 保留
         else
             call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
         endif
+        set bm = null
+        return
+    endif
+
+    // ── STRIKE state (持续输出，被集火不打断) ──
+    if state == 3 then
+        set target = udg_bm_Target1
+        // 退出条件：目标死亡 / HP回升>=300
+        if target == null or IsUnitDeadBJ(target) then
+            call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] STRIKE done (target dead) -> NORMAL|r")
+            set udg_bm_State1 = 0
+            set udg_bm_SafeTicks1 = -10
+            set udg_bm_Target1 = null
+            set bm = null
+            return
+        endif
+        if GetUnitState(target, UNIT_STATE_LIFE) >= 300.0 then
+            call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] STRIKE done (target HP>=300) -> NORMAL|r")
+            set udg_bm_State1 = 0
+            set udg_bm_SafeTicks1 = -10
+            set udg_bm_Target1 = null
+            set bm = null
+            return
+        endif
+        // 每tick重新下attack指令，咬住目标，覆盖母调度
+        call IssueTargetOrder(bm, "attack", target)
         set bm = null
         return
     endif
