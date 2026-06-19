@@ -326,7 +326,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     // ── STRIKE state (持续输出，被集火不打断) ──
     if state == 3 then
         set target = udg_bm_Target1
-        // 退出条件：目标死亡 / HP回升>=300
+        // 退出条件：目标死亡（追死为止）
         if target == null or IsUnitDeadBJ(target) then
             call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] STRIKE done (target dead) -> NORMAL|r")
             set udg_bm_State1 = 0
