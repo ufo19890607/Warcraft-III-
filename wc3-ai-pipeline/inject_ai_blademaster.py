@@ -2,7 +2,7 @@
 """
 inject_ai_blademaster.py — Blademaster (剑圣) EVADE + HUNT + DASH
 
-状态: 0=NORMAL  1=WAIT(撤退)  2=DASH(突进攻击)
+状态: 0=NORMAL  1=WAIT(撤退)  2=DASH(突进攻击)  3=STRIKE(持续输出)
 
 核心: 所有攻击都先靠近目标(<100码)再取消buff攻击，解决隐身attack失效问题。
 攻击目标 = 敌方血量最少的英雄(FindLowestHpHero)。
@@ -39,7 +39,8 @@ BM_GLOBALS = """
     integer udg_bm_WaitTick1  = 0
     real    udg_bm_RetreatX1  = 0.0
     real    udg_bm_RetreatY1  = 0.0
-    unit    udg_bm_Target1    = null"""
+    unit    udg_bm_Target1    = null
+    integer udg_bm_HuntCooldown1 = 0    // HUNT冷却计时(tick数,0=可触发)"""
 
 BM_FUNCTIONS = """
 // ================================================================
@@ -116,26 +117,57 @@ function Trig_AIML_BM_FindNearestEnemy takes unit bm, player enemyP returns unit
     return best
 endfunction
 
-// HUNT触发检测: 是否存在残血英雄(<2000码, HP<300)
-function Trig_AIML_BM_HasHuntTarget takes unit bm, player enemyP returns boolean
+// HUNT目标选择（按优先级）:
+//   ① 残血英雄(HP<300, 2000码内)
+//   ② 毁灭者'uaod'  ③ 黑曜石雕像'uobs'  ④ 女妖'uban'
+//   ⑤ 蜘蛛'ucry'   ⑥ 食尸鬼'ugho'      (②~⑥: 800码内)
+// 返回目标unit，无目标返回null
+function Trig_AIML_BM_FindHuntTarget takes unit bm, player enemyP returns unit
     local group g = CreateGroup()
     local unit u
     local real bx = GetUnitX(bm)
     local real by = GetUnitY(bm)
     local real dx
     local real dy
+    local real d2
+    local unit heroTarget = null
+    local real heroHp = 999999.0
+    local unit priTarget_2 = null  // 毁灭者
+    local unit priTarget_3 = null  // 黑曜石雕像
+    local unit priTarget_4 = null  // 女妖
+    local unit priTarget_5 = null  // 蜘蛛
+    local unit priTarget_6 = null  // 食尸鬼
+    local integer uid
+    local real hp
     call GroupEnumUnitsOfPlayer(g, enemyP, null)
     loop
         set u = FirstOfGroup(g)
         exitwhen u == null
-        if IsUnitType(u, UNIT_TYPE_HERO) and not IsUnitDeadBJ(u) then
-            if GetUnitState(u, UNIT_STATE_LIFE) < 300.0 then
-                set dx = GetUnitX(u) - bx
-                set dy = GetUnitY(u) - by
-                if dx * dx + dy * dy < 4000000.0 then
-                    call DestroyGroup(g)
-                    set g = null
-                    return true
+        if not IsUnitDeadBJ(u) then
+            set dx = GetUnitX(u) - bx
+            set dy = GetUnitY(u) - by
+            set d2 = dx * dx + dy * dy
+            // ① 残血英雄: 2000码内 HP<300
+            if IsUnitType(u, UNIT_TYPE_HERO) and d2 < 4000000.0 then
+                set hp = GetUnitState(u, UNIT_STATE_LIFE)
+                if hp < 300.0 and hp < heroHp then
+                    set heroHp = hp
+                    set heroTarget = u
+                endif
+            endif
+            // ②~⑥ 普通单位: 800码内
+            if d2 < 640000.0 then
+                set uid = GetUnitTypeId(u)
+                if uid == 'uaod' and priTarget_2 == null then
+                    set priTarget_2 = u
+                elseif uid == 'uobs' and priTarget_3 == null then
+                    set priTarget_3 = u
+                elseif uid == 'uban' and priTarget_4 == null then
+                    set priTarget_4 = u
+                elseif uid == 'ucry' and priTarget_5 == null then
+                    set priTarget_5 = u
+                elseif uid == 'ugho' and priTarget_6 == null then
+                    set priTarget_6 = u
                 endif
             endif
         endif
@@ -143,7 +175,23 @@ function Trig_AIML_BM_HasHuntTarget takes unit bm, player enemyP returns boolean
     endloop
     call DestroyGroup(g)
     set g = null
-    return false
+    // 按优先级返回
+    if heroTarget != null then
+        return heroTarget
+    endif
+    if priTarget_2 != null then
+        return priTarget_2
+    endif
+    if priTarget_3 != null then
+        return priTarget_3
+    endif
+    if priTarget_4 != null then
+        return priTarget_4
+    endif
+    if priTarget_5 != null then
+        return priTarget_5
+    endif
+    return priTarget_6
 endfunction
 
 function Trig_AIML_BM_FindEnemyHero takes player enemyP returns unit
@@ -287,14 +335,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             set bm = null
             return
         endif
-        if GetUnitState(target, UNIT_STATE_LIFE) >= 300.0 then
-            call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] STRIKE done (target HP>=300) -> NORMAL|r")
-            set udg_bm_State1 = 0
-            set udg_bm_SafeTicks1 = -10
-            set udg_bm_Target1 = null
-            set bm = null
-            return
-        endif
+        // 目标死亡是唯一退出条件，追死为止
         // 每tick重新下attack指令，咬住目标，覆盖母调度
         call IssueTargetOrder(bm, "attack", target)
         set bm = null
@@ -378,10 +419,14 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         return
     endif
 
-    // ② HUNT: 残血英雄存在
-    if Trig_AIML_BM_HasHuntTarget(bm, enemyP) then
-        set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
+    // ② HUNT: 按优先级找目标（冷却30s=300tick）
+    if udg_bm_HuntCooldown1 > 0 then
+        set udg_bm_HuntCooldown1 = udg_bm_HuntCooldown1 - 1
+    endif
+    set target = Trig_AIML_BM_FindHuntTarget(bm, enemyP)
+    if target != null and udg_bm_HuntCooldown1 <= 0 then
         call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT! target=" + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
+        set udg_bm_HuntCooldown1 = 300  // 重置30s冷却
         // 先判距离：已在100码内则直接进STRIKE平A，节省疾风步CD
         set dx = GetUnitX(target) - GetUnitX(bm)
         set dy = GetUnitY(target) - GetUnitY(bm)
@@ -511,6 +556,7 @@ def main():
             f"    set udg_bm_WaitTick1 = 0{nl}"
             f"    set udg_bm_PrevHp1 = 0.0{nl}"
             f"    set udg_bm_Target1 = null{nl}"
+            f"    set udg_bm_HuntCooldown1 = 0{nl}"
         )
         src = src[:eol + len(nl)] + reset_code + src[eol + len(nl):]
         print("[BM] added state reset to Variable Reset block")
