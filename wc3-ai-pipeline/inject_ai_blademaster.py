@@ -277,8 +277,8 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     // ── DASH state (专心突进，不检测EVADE) ──
     if state == 2 then
         set target = udg_bm_Target1
-        // 目标失效（死亡 / 被救活脱离残血HP>=300）-> 攻击最近敌方单位，避免原地乱转
-        if target == null or IsUnitDeadBJ(target) or GetUnitState(target, UNIT_STATE_LIFE) >= 300.0 then
+        // 目标失效（死亡）-> 攻击最近敌方单位，避免原地乱转
+        if target == null or IsUnitDeadBJ(target) then
             set target = Trig_AIML_BM_FindNearestEnemy(bm, enemyP)
             if target == null then
                 call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] DASH target lost, no enemy -> NORMAL|r")
@@ -362,7 +362,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         set udg_bm_SafeTicks1 = safeTicks
         if safeTicks >= 5 then
             // 撤退结束 -> 检测疾风步状态
-            set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
+            set target = Trig_AIML_BM_FindHuntTarget(bm, enemyP)
             if GetUnitAbilityLevel(bm, 'Boro') > 0 and target != null then
                 // 疾风步还在 -> DASH突进
                 call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] WAIT->DASH (Boro on) target=" + GetUnitName(target) + "|r")
@@ -419,40 +419,41 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         return
     endif
 
-    // ② HUNT: 按优先级找目标（冷却30s=300tick）
+    // ② HUNT: 按优先级找目标（冷却30s=300tick，冷却中跳过枚举）
     if udg_bm_HuntCooldown1 > 0 then
         set udg_bm_HuntCooldown1 = udg_bm_HuntCooldown1 - 1
-    endif
-    set target = Trig_AIML_BM_FindHuntTarget(bm, enemyP)
-    if target != null and udg_bm_HuntCooldown1 <= 0 then
-        call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT! target=" + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
-        set udg_bm_HuntCooldown1 = 300  // 重置30s冷却
-        // 先判距离：已在100码内则直接进STRIKE平A，节省疾风步CD
-        set dx = GetUnitX(target) - GetUnitX(bm)
-        set dy = GetUnitY(target) - GetUnitY(bm)
-        set dist = SquareRoot(dx * dx + dy * dy)
-        if dist < 100.0 then
-            call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] HUNT close (d=" + I2S(R2I(dist)) + ") -> STRIKE directly|r")
-            call IssueTargetOrder(bm, "attack", target)
-            set udg_bm_State1 = 3
-            set udg_bm_SafeTicks1 = 0
-            set udg_bm_Target1 = target
-        else
-            // 距离>=100 -> 释放疾风步突进
-            set ww = IssueImmediateOrder(bm, "windwalk")
-            if ww then
-                call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM] windwalk OK -> DASH|r")
-                set udg_bm_State1 = 2
+    else
+        set target = Trig_AIML_BM_FindHuntTarget(bm, enemyP)
+        if target != null then
+            call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT! target=" + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
+            set udg_bm_HuntCooldown1 = 300  // 重置30s冷却
+            // 先判距离：已在100码内则直接进STRIKE平A，节省疾风步CD
+            set dx = GetUnitX(target) - GetUnitX(bm)
+            set dy = GetUnitY(target) - GetUnitY(bm)
+            set dist = SquareRoot(dx * dx + dy * dy)
+            if dist < 100.0 then
+                call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] HUNT close (d=" + I2S(R2I(dist)) + ") -> STRIKE directly|r")
+                call IssueTargetOrder(bm, "attack", target)
+                set udg_bm_State1 = 3
                 set udg_bm_SafeTicks1 = 0
                 set udg_bm_Target1 = target
-                call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
             else
-                // 疾风步CD -> 母调度接管1s
-                set udg_bm_SafeTicks1 = -10
+                // 距离>=100 -> 释放疾风步突进
+                set ww = IssueImmediateOrder(bm, "windwalk")
+                if ww then
+                    call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM] windwalk OK -> DASH|r")
+                    set udg_bm_State1 = 2
+                    set udg_bm_SafeTicks1 = 0
+                    set udg_bm_Target1 = target
+                    call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
+                else
+                    // 疾风步CD -> 母调度接管1s
+                    set udg_bm_SafeTicks1 = -10
+                endif
             endif
+            set bm = null
+            return
         endif
-        set bm = null
-        return
     endif
 
     set bm = null
