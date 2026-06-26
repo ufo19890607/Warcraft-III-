@@ -34,6 +34,7 @@ INJECTOR_FOCUS="$SCRIPT_DIR/inject_ai_focus_retreat.py"
 INJECTOR_CREEP="$SCRIPT_DIR/inject_ai_creep_control.py"
 INJECTOR_SURROUND="$SCRIPT_DIR/inject_ai_surround.py"
 INJECTOR_BM="$SCRIPT_DIR/inject_ai_blademaster.py"
+INJECTOR_ESCAPE="$SCRIPT_DIR/inject_ai_escape.py"
 INJECTOR_DEBUG="$SCRIPT_DIR/inject_debug.py"
 REPACK="$SCRIPT_DIR/tools/repack"
 HEADER_BIN="$SCRIPT_DIR/../base-1.27/base-1.27.w3x"  # 1.27 header source (stable, do not delete)
@@ -81,74 +82,84 @@ echo "输入: $INPUT_W3X"
 echo ""
 
 # [1] 解包
-echo "[1/9] 解包 war3map.j..."
+echo "[1/10] 解包 war3map.j + war3map.doo..."
 "$STORMTOOL" extract-one "$INPUT_W3X" "war3map.j" "$TMP_DIR/war3map.j" > /dev/null
+"$STORMTOOL" extract-one "$INPUT_W3X" "war3map.doo" "$TMP_DIR/war3map.doo" > /dev/null
 J="$TMP_DIR/war3map.j"
+DOO="$TMP_DIR/war3map.doo"
 echo "    $(wc -l < "$J") 行"
 
 # [2] 齐射
 if grep -q "function Trig_AIML_SalvoForPlayer" "$J"; then
-    echo "[2/9] 齐射已存在，跳过"
+    echo "[2/10] 齐射已存在，跳过"
 else
-    echo "[2/9] 注入齐射..."
+    echo "[2/10] 注入齐射..."
     python3 "$INJECTOR_SALVO" "$J" "$J"
 fi
 
 # [3] 英雄魔法（TC践踏 + 暗影猎手）
 if grep -q "function Trig_AIML_TC_Stomp_Logic" "$J"; then
-    echo "[3/9] 英雄魔法已存在，跳过"
+    echo "[3/10] 英雄魔法已存在，跳过"
 else
-    echo "[3/9] 注入英雄魔法（TC践踏 + 暗影猎手）..."
+    echo "[3/10] 注入英雄魔法（TC践踏 + 暗影猎手）..."
     python3 "$INJECTOR_MAGIC" "$J" "$J"
 fi
 
 # [4] 集火后撤
 if grep -q "function Trig_AIML_FocusRetreatForPlayer" "$J"; then
-    echo "[4/9] 集火后撤已存在，跳过"
+    echo "[4/10] 集火后撤已存在，跳过"
 else
-    echo "[4/9] 注入集火后撤..."
+    echo "[4/10] 注入集火后撤..."
     python3 "$INJECTOR_FOCUS" "$J"
 fi
 
 # [5] 补刀 / 防补刀
 if grep -q "function Trig_AIML_CreepControlForPlayer" "$J"; then
-    echo "[5/9] 补刀已存在，跳过"
+    echo "[5/10] 补刀已存在，跳过"
 else
-    echo "[5/9] 注入补刀 / 防补刀..."
+    echo "[5/10] 注入补刀 / 防补刀..."
     python3 "$INJECTOR_CREEP" "$J"
 fi
 
 # [6] 围杀
 if grep -q "function Trig_AIML_SurroundTick" "$J"; then
-    echo "[6/9] 围杀已存在，跳过"
+    echo "[6/10] 围杀已存在，跳过"
 else
-    echo "[6/9] 注入围杀..."
+    echo "[6/10] 注入围杀..."
     python3 "$INJECTOR_SURROUND" "$J"
 fi
 
-# [7] 剑圣逃脱（依赖 SH_Tick，必须在英雄魔法之后）
-if grep -q "function Trig_AIML_BM_Tick" "$J"; then
-    echo "[7/9] 剑圣逃脱已存在，跳过"
+# [7/10] 逃跑（依赖 SurroundInit 锚点）
+if grep -q "function Trig_AIML_EscapeTick" "$J"; then
+    echo "[7/10] 逃跑已存在，跳过"
 else
-    echo "[7/9] 注入剑圣逃脱..."
+    echo "[7/10] 注入逃跑..."
+    python3 "$INJECTOR_ESCAPE" "$J" "$DOO"
+fi
+
+# [8/10] 剑圣逃脱（依赖 SH_Tick，必须在英雄魔法之后）
+if grep -q "function Trig_AIML_BM_Tick" "$J"; then
+    echo "[8/10] 剑圣逃脱已存在，跳过"
+else
+    echo "[8/10] 注入剑圣逃脱..."
     python3 "$INJECTOR_BM" "$J"
 fi
 
 # [8] Debug命令（可选）
 if [ -f "$INJECTOR_DEBUG" ]; then
     if grep -q "function Trig_AIML_DebugToggle" "$J"; then
-        echo "[8/9] Debug命令已存在，跳过"
+        echo "[9/10] Debug命令已存在，跳过"
     else
-        echo "[8/9] 注入Debug命令..."
+        echo "[9/10] 注入Debug命令..."
         python3 "$INJECTOR_DEBUG" "$J"
     fi
 else
-    echo "[8/9] inject_debug.py 不存在，跳过"
+    echo "[9/10] inject_debug.py 不存在，跳过"
 fi
 
 # [9] pjass 语法检查
 if [ -f "$PJASS" ] && [ -f "$COMMON_J" ] && [ -f "$BLIZZARD_J" ]; then
-    echo "[9/9] pjass 语法检查..."
+    echo "[10/10] pjass 语法检查..."
     ERRORS=$("$PJASS" "$COMMON_J" "$BLIZZARD_J" "$J" 2>&1 | grep -c "$(basename "$J"):" || true)
     if [ "$ERRORS" -gt 0 ]; then
         echo "ERROR: $ERRORS 个语法错误:"
@@ -157,7 +168,7 @@ if [ -f "$PJASS" ] && [ -f "$COMMON_J" ] && [ -f "$BLIZZARD_J" ]; then
     fi
     echo "    0 errors ✓"
 else
-    echo "[9/9] pjass 不可用，跳过语法检查"
+    echo "[9/10] pjass 不可用，跳过语法检查"
 fi
 
 # 打包 Reforged
@@ -197,6 +208,6 @@ echo "    $OUT_127 ($(du -h $OUT_127 | cut -f1))"
 echo ""
 echo "=========================================="
 echo " 完成!"
-echo " 功能：TC践踏 | 齐射 | 集火后撤 | 补刀 | 围杀 | 剑圣逃脱"
-echo " 命令：-debug | -creep | -surround"
+echo " 功能：TC践踏 | 齐射 | 集火后撤 | 补刀 | 围杀 | 逃跑 | 剑圣逃脱"
+echo " 命令：-debug | -creep | -surround | -escape"
 echo "=========================================="
