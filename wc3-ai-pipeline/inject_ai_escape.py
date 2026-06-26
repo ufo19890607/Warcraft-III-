@@ -845,10 +845,10 @@ function Trig_AIML_EscapeTick takes nothing returns nothing
 endfunction
 
 function Trig_AIML_EscapeToggle takes nothing returns nothing
-    // [V40] Round1Mode set by Variable Reset from Pref
+    set udg_aiml_Round1Mode = 2
     set udg_aiml_Round1Pref = 2
     set udg_aiml_EscapeMode = true
-    call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[AIML] Round 1 mode: ESCAPE (next round)|r")
+    call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[AIML] Round 1 mode: ESCAPE|r")
 endfunction
 
 

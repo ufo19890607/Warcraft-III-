@@ -358,13 +358,16 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
 endfunction
 
 function Trig_AIML_SurroundToggle takes nothing returns nothing
+    set udg_aiml_Round1Mode = 1
     set udg_aiml_Round1Pref = 1
-    call DisplayTextToForce(GetPlayersAll(), "|cffff8800[AIML] Round 1 mode: SURROUND (next round)|r")
+    call DisplayTextToForce(GetPlayersAll(), "|cffff8800[AIML] Round 1 mode: SURROUND|r")
 endfunction
 
 function Trig_AIML_CreepModeToggle takes nothing returns nothing
+    set udg_aiml_Round1Mode = 0
     set udg_aiml_Round1Pref = 0
-    call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[AIML] Round 1 mode: CREEP (next round)|r")
+    set udg_aiml_EscapeMode = false
+    call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[AIML] Round 1 mode: CREEP|r")
 endfunction
 
 function Trig_AIML_SurroundTimerTick takes nothing returns nothing
