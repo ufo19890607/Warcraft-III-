@@ -51,7 +51,7 @@ def main():
     # 1) Globals
     # ------------------------------------------------------------------ #
     SURROUND_GLOBALS = """    integer udg_aiml_Round1Mode = 0
-    integer udg_aiml_Round1Pref = 1
+    integer udg_aiml_Round1Pref = 0
     integer udg_aiml_SurroundFallbackPrinted = 0
     unit    udg_aiml_SurroundTarget = null
     real    udg_aiml_SurroundTargetX = 0.0
@@ -358,15 +358,15 @@ function Trig_AIML_SurroundTick takes player p, player ep returns nothing
 endfunction
 
 function Trig_AIML_SurroundToggle takes nothing returns nothing
-    set udg_aiml_Round1Mode = 1
     set udg_aiml_Round1Pref = 1
-    call DisplayTextToForce(GetPlayersAll(), "|cffff8800[AIML] Round 1 mode: SURROUND|r")
+    call DisplayTextToForce(GetPlayersAll(), "|cffff8800[AIML] Round 1 mode: SURROUND (next round)|r")
 endfunction
 
 function Trig_AIML_CreepModeToggle takes nothing returns nothing
-    set udg_aiml_Round1Mode = 0
     set udg_aiml_Round1Pref = 0
-    call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[AIML] Round 1 mode: CREEP|r")
+    call EnableTrigger( gg_trg_Computer1Combat_AI )
+    call EnableTrigger( gg_trg_Computer2Combat_AI )
+    call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[AIML] Round 1 mode: CREEP (next round)|r")
 endfunction
 
 function Trig_AIML_SurroundTimerTick takes nothing returns nothing

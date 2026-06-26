@@ -510,32 +510,31 @@ endfunction"""
     # ------------------------------------------------------------------ #
     # 4) Guard Computer2Combat_AI_Actions in Round1
     # ------------------------------------------------------------------ #
-    GUARD_OLD = "function Trig_Computer2Combat_AI_Actions takes nothing returns nothing"
-    GUARD_NEW = (
-        "function Trig_Computer2Combat_AI_Actions takes nothing returns nothing" + nl
-        + "    // [CREEP V39] Skip combat AI dispatch when creep/surround mode is active in Round 1" + nl
-        + "    if udg_RoundNo == 1 and (udg_aiml_CreepMode >= 1 or udg_aiml_Round1Mode == 1) then" + nl
-        + "        return" + nl
-        + "    endif"
-    )
-    if GUARD_OLD in src:
-        src = src.replace(GUARD_OLD, GUARD_NEW, 1)
-        print("[V39] patched Computer2Combat_AI_Actions guard")
-    else:
-        print("WARN: Computer2Combat_AI_Actions not found, skipping guard patch")
+    # [V40] Removed Combat_AI guard - causes unit freeze when Round1Mode>=1
+    # Combat_AI now controlled by DisableTrigger in Variable Reset instead.
+    # See Variable Reset injection below.
 
     # 4c) Inject round-start state reset into Variable Reset block
     RESET_MARKER = "// Variable Reset"
     RESET_INJECT = (
         "// Variable Reset" + nl
-        + "    // [AIML V39] Reset AI mode state on each round start" + nl
-        + "    // [AIML V39] Round1Mode reads from Round1Pref (persists across rounds)" + nl
+        + "    // [V40] Mode switch deferred: apply Round1Pref at countdown end" + nl
         + "    if udg_RoundNo == 1 then" + nl
         + "        set udg_aiml_Round1Mode = udg_aiml_Round1Pref" + nl
         + "    else" + nl
         + "        set udg_aiml_Round1Mode = 0" + nl
         + "    endif" + nl
         + "    set udg_aiml_CreepMode = 0" + nl
+        + "    // [V40] Disable Combat_AI if in surround/escape mode (Round1Mode>=1)" + nl
+        + "    // Combat_AI handles unit production - must run until countdown ends." + nl
+        + "    // After countdown, surround/escape modes handle unit commands themselves." + nl
+        + "    if udg_aiml_Round1Mode >= 1 then" + nl
+        + "        call DisableTrigger( gg_trg_Computer1Combat_AI )" + nl
+        + "        call DisableTrigger( gg_trg_Computer2Combat_AI )" + nl
+        + "    else" + nl
+        + "        call EnableTrigger( gg_trg_Computer1Combat_AI )" + nl
+        + "        call EnableTrigger( gg_trg_Computer2Combat_AI )" + nl
+        + "    endif" + nl
         + "    set udg_aiml_SurroundStillTicks = 0" + nl
         + "    set udg_aiml_SurroundAttacking = false" + nl
         + "    set udg_aiml_SurroundTarget = null" + nl
@@ -547,19 +546,7 @@ endfunction"""
     else:
         print("WARN: Variable Reset marker not found, skipping state reset injection")
 
-    # 4b) Guard Computer1Combat_AI_Actions in Round1
-    GUARD1_OLD = "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing"
-    if GUARD1_OLD in src:
-        src = src.replace(
-            GUARD1_OLD,
-            "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing" + nl
-            + "    if udg_RoundNo == 1 and (udg_aiml_CreepMode >= 1 or udg_aiml_Round1Mode == 1) then" + nl
-            + "        return" + nl
-            + "    endif",
-        )
-        print("[V39] patched Computer1Combat_AI_Actions guard")
-    else:
-        print("WARN: Computer1Combat_AI_Actions not found, skipping guard patch")
+    # [V40] Removed Computer1Combat_AI guard (same reason as Computer2 above)
 
     # ------------------------------------------------------------------ #
     # 5) Disable original neutral-attack triggers
