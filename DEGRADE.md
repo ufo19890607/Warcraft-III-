@@ -313,3 +313,108 @@ endif
 1. WC3 AI 单位的 attack 指令对"距离"敏感，远距离 + 隐身 = 必失败。把移动与攻击拆成两个明确阶段，用距离阈值（< 100 码）切换，是最可靠的做法。
 2. `move` 指令在 AI 单位上"绝不开火"的特性（见 README 指令行为表）正好用于隐身穿身，不会打断隐身。
 3. 这个"先靠近再攻击"模式可作为所有近战 AI 突进的通用执行器。
+
+
+---
+
+## 坑 15：Combat_AI 完全 DisableTrigger / guard 导致不出兵（V40 核心坑）
+
+**发现时间**：2026-06-27
+
+**现象**：输入 `-surround`/`-escape`/`-creep` 任何命令后，倒计时结束不出兵。只有什么都不输入时才正常。
+
+**根因**：
+
+`Computer1/2Combat_AI_Actions` 不仅仅是"战斗调度"——它包含**所有单位的 AI 指令**：
+
+1. **前两行**：`GroupPointOrderLocBJ(全军, "attack", 敌方基地)` — 全军攻击
+2. **英雄调度**：Hamg/Ofar/Ekee 等每个英雄的独立行为
+3. **农民造塔**：`hpea` → `IssueBuildOrderByIdLocBJ('hwtw')`（人族农民造守卫塔）
+4. **苦工造塔**：`opeo` → `IssueBuildOrderByIdLocBJ('owtw')`（兽族苦工造箭塔）
+5. **水元素/萨满/巫医/步兵等**：各兵种的独立指令
+
+V40 之前尝试过的方案全部失败：
+
+| 方案 | 问题 |
+|------|------|
+| `if Round1Mode >= 1 then return` guard | 截断**全部** Actions → 农民不造塔 → 不出兵 |
+| `DisableTrigger(Combat_AI)` | 同上，trigger 被关后没有任何指令发出 |
+| `DisableTrigger` + Variable Reset 里 `EnableTrigger` | Enable 回来了，但 guard 还是在 return |
+| 让 Combat_AI 运行，靠 Tick 频率覆盖 | 全军攻击指令覆盖逃跑方向，英雄往敌方基地冲 |
+| Toggle 只设 Pref，Mode 延迟到 Variable Reset | 第一次输入命令当轮不生效 |
+
+**最终方案（选择性 guard）**：
+
+只截断前两行 `GroupPointOrderLocBJ("attack")`，保留其余所有逻辑：
+
+```jass
+function Trig_Computer1Combat_AI_Actions takes nothing returns nothing
+    if not (udg_RoundNo == 1 and udg_aiml_Round1Mode >= 1) then
+        call GroupPointOrderLocBJ(全队, "attack", 敌方基地)   // ← 只截这两行
+        call GroupPointOrderLocBJ(起始区, "attack", 敌方基地)
+    endif
+    // 英雄调度、农民造塔、单位指令全部正常 ↓
+    call ForGroupBJ('Hamg', Func004A)
+    ...
+    call ForGroupBJ('hpea', Func023A)  // 农民造塔 ← 出兵！
+    ...
+endfunction
+```
+
+**关键洞察**（来自 windyu 的 `-g` 线索）：
+
+- 输入 `-g`（ready 命令）后出兵正常 → 说明 Combat_AI 运行 = 出兵
+- 不输入 `-g`、只输入模式命令后不出兵 → 说明我们的 Disable/guard 截断了 Combat_AI
+- **全军攻击指令是唯一跟逃跑冲突的**，其他指令（英雄调度、农民造塔）不影响逃跑
+
+**教训**：
+1. "截断 Combat_AI"不等于"截断战斗调度"，它还负责**出兵**
+2. 不能用 DisableTrigger 或整体 guard，必须**精确到行级**截断
+3. 模式切换必须**立即生效**（同时设 Mode + Pref），否则当轮不生效
+4. POC 的 DisableTrigger 能用是因为 POC 不验证出兵，正式图必须保留出兵
+
+---
+
+## 坑 16：IsTerrainPathable 无法检测树木（destructable）
+
+**发现时间**：2026-06-27（escape AI 开发过程中）
+
+**现象**：`IsTerrainPathable(x, y, PATHING_TYPE_WALKABILITY)` 对树旁边的点返回 true（可通过），但实际有树挡路。
+
+**根因**：
+
+WC3 引擎中，树木是 **destructable**，不属于 terrain pathing map。`IsTerrainPathable` 只检测地形级别的不可通行（悬崖、水域、建筑地基），不检测 destructable。
+
+`EnumDestructablesInRect` 能检测树木但太重（每秒 48 次调用导致卡顿）。
+
+**最终方案**：
+
+构建时从 `war3map.doo` 读取 LTlt 树坐标 → 88×43 grid array（3784 格，1240 格标记），运行时 `HasTreeAt(x, y)` O(1) 查表。
+
+---
+
+## 坑 17：linear scan 683 棵树超 WC3 ops 限制
+
+**发现时间**：2026-06-27
+
+**现象**：逃跑 AI 最初用 `ForGroup(683棵树, HasTreeAt×48次/tick)` 检测树木，导致引擎静默截断操作数，函数执行不完整。
+
+**根因**：
+
+WC3 引擎对每个 trigger action 有操作数上限（约 30000 ops）。线性遍历 683 点 × 48 次采样 = ~32000 ops，超出限制被静默截断。
+
+**修复**：grid O(1) 查表替代线性遍历，每 tick ~40 次 `HasTreeAt` 调用，远低于 ops 限制。
+
+---
+
+## 坑 18：stuck 检测阈值 3 tick 太敏感，误触发 breakout
+
+**发现时间**：2026-06-27
+
+**现象**：英雄短暂路径停顿（0.5-1s 的寻路重算）就触发 breakout，全军集火错误目标。
+
+**根因**：
+
+stuck 阈值 3 tick（1.5s）太短，WC3 引擎寻路重算时常 1-2 tick 不移动，不是真正被围。
+
+**修复**：阈值从 3 tick 改为 5 tick（2.5s），减少伪触发，真正被围时 2.5s 仍能可靠检测。
