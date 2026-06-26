@@ -364,8 +364,6 @@ endfunction
 
 function Trig_AIML_CreepModeToggle takes nothing returns nothing
     set udg_aiml_Round1Pref = 0
-    call EnableTrigger( gg_trg_Computer1Combat_AI )
-    call EnableTrigger( gg_trg_Computer2Combat_AI )
     call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[AIML] Round 1 mode: CREEP (next round)|r")
 endfunction
 

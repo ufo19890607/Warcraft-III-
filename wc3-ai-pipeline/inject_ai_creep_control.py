@@ -457,7 +457,7 @@ endfunction
     CREEP_TIMER_FUNCS = (
         nl + "// [CREEP V39] Independent creep control timer" + nl
         + "function Trig_AIML_CreepTick takes nothing returns nothing" + nl
-        + "    if udg_RoundNo == 1 and udg_aiml_Round1Mode == 1 then" + nl
+        + "    if udg_RoundNo == 1 and udg_aiml_Round1Mode >= 1 then" + nl
         + "        return" + nl
         + "    endif" + nl
         + "    call Trig_AIML_CreepControlForPlayer(Player(1), Player(0))" + nl
@@ -510,31 +510,23 @@ endfunction"""
     # ------------------------------------------------------------------ #
     # 4) Guard Computer2Combat_AI_Actions in Round1
     # ------------------------------------------------------------------ #
-    # [V40] Removed Combat_AI guard - causes unit freeze when Round1Mode>=1
-    # Combat_AI now controlled by DisableTrigger in Variable Reset instead.
-    # See Variable Reset injection below.
+    # [V40] No Combat_AI guard needed. Combat_AI always runs.
+    # Mode ticks override Combat_AI orders at higher frequency.
 
     # 4c) Inject round-start state reset into Variable Reset block
     RESET_MARKER = "// Variable Reset"
     RESET_INJECT = (
         "// Variable Reset" + nl
-        + "    // [V40] Mode switch deferred: apply Round1Pref at countdown end" + nl
+        + "    // [V40] Apply Round1Pref at countdown end" + nl
         + "    if udg_RoundNo == 1 then" + nl
         + "        set udg_aiml_Round1Mode = udg_aiml_Round1Pref" + nl
         + "    else" + nl
         + "        set udg_aiml_Round1Mode = 0" + nl
         + "    endif" + nl
         + "    set udg_aiml_CreepMode = 0" + nl
-        + "    // [V40] Disable Combat_AI if in surround/escape mode (Round1Mode>=1)" + nl
-        + "    // Combat_AI handles unit production - must run until countdown ends." + nl
-        + "    // After countdown, surround/escape modes handle unit commands themselves." + nl
-        + "    if udg_aiml_Round1Mode >= 1 then" + nl
-        + "        call DisableTrigger( gg_trg_Computer1Combat_AI )" + nl
-        + "        call DisableTrigger( gg_trg_Computer2Combat_AI )" + nl
-        + "    else" + nl
-        + "        call EnableTrigger( gg_trg_Computer1Combat_AI )" + nl
-        + "        call EnableTrigger( gg_trg_Computer2Combat_AI )" + nl
-        + "    endif" + nl
+        + "    // [V40] Combat_AI always stays enabled - it handles unit production." + nl
+        + "    // Mode ticks (surround/escape/creep) override Combat_AI orders" + nl
+        + "    // at higher frequency (0.3-0.5s vs 1.0s), so they win the order race." + nl
         + "    set udg_aiml_SurroundStillTicks = 0" + nl
         + "    set udg_aiml_SurroundAttacking = false" + nl
         + "    set udg_aiml_SurroundTarget = null" + nl
@@ -546,7 +538,7 @@ endfunction"""
     else:
         print("WARN: Variable Reset marker not found, skipping state reset injection")
 
-    # [V40] Removed Computer1Combat_AI guard (same reason as Computer2 above)
+    # [V40] No Computer1Combat_AI guard needed. Combat_AI always runs.
 
     # ------------------------------------------------------------------ #
     # 5) Disable original neutral-attack triggers
