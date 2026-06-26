@@ -545,12 +545,12 @@ function Trig_AIML_Escape_Hero takes unit hero, player ep, integer cooldown, int
             set udg_esc_StuckCount1 = 0
         endif
     endif
-    if slot == 0 and udg_esc_StuckCount0 >= 3 then
+    if slot == 0 and udg_esc_StuckCount0 >= 5 then
         call Trig_AIML_Breakout(hero, GetOwningPlayer(hero), ep)
         set udg_esc_StuckCount0 = 0
         return cooldown
     endif
-    if slot == 1 and udg_esc_StuckCount1 >= 3 then
+    if slot == 1 and udg_esc_StuckCount1 >= 5 then
         call Trig_AIML_Breakout(hero, GetOwningPlayer(hero), ep)
         set udg_esc_StuckCount1 = 0
         return cooldown
@@ -633,13 +633,7 @@ function Trig_AIML_Escape_Hero takes unit hero, player ep, integer cooldown, int
             set dirY = udg_esc_LockDY1
         endif
         call IssuePointOrder(hero, "move", hx + dirX * 212.1, hy + dirY * 212.1)
-        if udg_aiml_DebugMode then
-            if stuck then
-                call DisplayTextToForce(GetPlayersAll(), "|cffff4444[ESC] " + GetUnitName(hero) + " flee " + Trig_AIML_DirName(dirX, dirY) + " STUCK cd=" + I2S(cooldown) + "|r")
-            else
-                call DisplayTextToForce(GetPlayersAll(), "|cffff4444[ESC] " + GetUnitName(hero) + " flee " + Trig_AIML_DirName(dirX, dirY) + " cd=" + I2S(cooldown) + "|r")
-            endif
-        endif
+        // [V40] Removed per-tick flee/stuck prints (too noisy)
         return cooldown - 1
     endif
     // --- Cooldown == 0: scan and decide ---
@@ -697,15 +691,47 @@ function Trig_AIML_Escape_Hero takes unit hero, player ep, integer cooldown, int
         set nearestEnemy = null
         return 4
     endif
-    // Not surrounded: unlock direction and engage
+    // Not surrounded: unlock direction
     if slot == 0 then
         set udg_esc_DirLocked0 = false
     else
         set udg_esc_DirLocked1 = false
     endif
-    if udg_aiml_DebugMode and udg_esc_DbgTick <= 0 then
-        call DisplayTextToForce(GetPlayersAll(), "|cff88ffff[ESC] " + GetUnitName(hero) + " safe enemies300=" + I2S(enemyCount300) + " enemyDist=" + I2S(R2I(SquareRoot(nearestDistSq))) + "|r")
+    // [V40] Near-tree check: if trees nearby in >=2 directions AND enemy within 300y, keep fleeing
+    // This prevents hero from stopping next to trees after escaping encirclement
+    set di = 0
+    set ux = 0.0
+    loop
+        exitwhen di >= 8
+        set checkX = hx + Trig_AIML_DirDX(di) * 150.0
+        set checkY = hy + Trig_AIML_DirDY(di) * 150.0
+        if Trig_AIML_HasTreeAt(checkX, checkY, 0.0) then
+            set ux = ux + 1.0
+        endif
+        set di = di + 1
+    endloop
+    if ux >= 2.0 and enemyCount300 >= 1 then
+        // Near trees and enemies close -> continue escaping
+        call Trig_AIML_PickEscapeDir(hx, hy, enemyNE, enemyNW, enemySE, enemySW, false)
+        set dirX = udg_esc_TempDX
+        set dirY = udg_esc_TempDY
+        if slot == 0 then
+            set udg_esc_LockDX0 = dirX
+            set udg_esc_LockDY0 = dirY
+            set udg_esc_DirLocked0 = true
+        else
+            set udg_esc_LockDX1 = dirX
+            set udg_esc_LockDY1 = dirY
+            set udg_esc_DirLocked1 = true
+        endif
+        call IssuePointOrder(hero, "move", hx + dirX * 212.1, hy + dirY * 212.1)
+        if udg_aiml_DebugMode then
+            call DisplayTextToForce(GetPlayersAll(), "|cffffaa44[ESC] " + GetUnitName(hero) + " near-tree -> flee " + Trig_AIML_DirName(dirX, dirY) + "|r")
+        endif
+        set nearestEnemy = null
+        return 4
     endif
+    // [V40] Removed safe-status periodic print
     // [CREEP] Check for low-HP neutral creep within 500y for last-hit
     set g = CreateGroup()
     call GroupEnumUnitsOfPlayer(g, Player(PLAYER_NEUTRAL_AGGRESSIVE), null)
