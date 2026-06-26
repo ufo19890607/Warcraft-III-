@@ -510,8 +510,47 @@ endfunction"""
     # ------------------------------------------------------------------ #
     # 4) Guard Computer2Combat_AI_Actions in Round1
     # ------------------------------------------------------------------ #
-    # [V40] No Combat_AI guard needed. Combat_AI always runs.
-    # Mode ticks override Combat_AI orders at higher frequency.
+    # [V40] Selective Combat_AI guard: only block "all army attack" orders
+    # (the 2 GroupPointOrderLocBJ lines at top of Actions).
+    # Hero dispatch, peasant tower building, and unit orders still run.
+    # Mode ticks (surround/escape) override hero orders at higher frequency.
+    #
+    # Computer1Combat_AI_Actions:
+    c1_marker = "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing"
+    c1_gpo1 = 'call GroupPointOrderLocBJ( GetUnitsOfPlayerMatching(Player(0), Condition(function Trig_Computer1Combat_AI_Func001001002)), "attack",'
+    c1_gpo2 = 'call GroupPointOrderLocBJ( GetUnitsInRectOfPlayer(gg_rct_P1Start, Player(0)), "attack",'
+    if c1_marker in src and c1_gpo1 in src and c1_gpo2 in src:
+        # Find the function body start
+        c1_start = src.find(c1_marker)
+        c1_body_start = src.find(nl, c1_start) + len(nl)  # first line after function header
+        # Find the end of the 2nd GroupPointOrderLocBJ line
+        c1_gpo2_idx = src.find(c1_gpo2, c1_start)
+        c1_gpo2_end = src.find(")" + nl, c1_gpo2_idx) + len(")" + nl)
+        # Wrap the 2 lines in a guard
+        original_lines = src[c1_body_start:c1_gpo2_end]
+        guarded = ("    // [V40] Skip army-attack in surround/escape mode" + nl
+                   + "    if not (udg_RoundNo == 1 and udg_aiml_Round1Mode >= 1) then" + nl
+                   + original_lines
+                   + "    endif" + nl)
+        src = src[:c1_body_start] + guarded + src[c1_gpo2_end:]
+        print("[V40] patched Computer1Combat_AI: selective guard on army-attack")
+
+    # Computer2Combat_AI_Actions:
+    c2_marker = "function Trig_Computer2Combat_AI_Actions takes nothing returns nothing"
+    c2_gpo1 = 'call GroupPointOrderLocBJ( GetUnitsOfPlayerMatching(Player(1), Condition(function Trig_Computer2Combat_AI_Func002001002)), "attack",'
+    c2_gpo2 = 'call GroupPointOrderLocBJ( GetUnitsInRectOfPlayer(gg_rct_P2Start, Player(1)), "attack",'
+    if c2_marker in src and c2_gpo1 in src and c2_gpo2 in src:
+        c2_start = src.find(c2_marker)
+        c2_body_start = src.find(nl, c2_start) + len(nl)
+        c2_gpo2_idx = src.find(c2_gpo2, c2_start)
+        c2_gpo2_end = src.find(")" + nl, c2_gpo2_idx) + len(")" + nl)
+        original_lines2 = src[c2_body_start:c2_gpo2_end]
+        guarded2 = ("    // [V40] Skip army-attack in surround/escape mode" + nl
+                    + "    if not (udg_RoundNo == 1 and udg_aiml_Round1Mode >= 1) then" + nl
+                    + original_lines2
+                    + "    endif" + nl)
+        src = src[:c2_body_start] + guarded2 + src[c2_gpo2_end:]
+        print("[V40] patched Computer2Combat_AI: selective guard on army-attack")
 
     # 4c) Inject round-start state reset into Variable Reset block
     RESET_MARKER = "// Variable Reset"
@@ -538,7 +577,7 @@ endfunction"""
     else:
         print("WARN: Variable Reset marker not found, skipping state reset injection")
 
-    # [V40] No Computer1Combat_AI guard needed. Combat_AI always runs.
+    # Computer1Combat_AI selective guard done above.
 
     # ------------------------------------------------------------------ #
     # 5) Disable original neutral-attack triggers
