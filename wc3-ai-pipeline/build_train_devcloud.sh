@@ -4,7 +4,7 @@
 # 用法: ./build_train_devcloud.sh <input.w3x> <output-prefix>
 #
 # 示例:
-#   ./build_train_devcloud.sh $war3_dir/UD-decisive-micro-reforged.w3x UD-decisive-V40
+#   ./build_train_devcloud.sh $war3_dir/UD-decisive-micro-reforged.w3x UD-decisive-V41
 #
 # 输出:
 #   <output-prefix>-Reforged.w3x
@@ -47,7 +47,7 @@ W3OBJ_DG="$SCRIPT_DIR/tools/w3_objdata_downgrade.py"
 if [ $# -lt 2 ]; then
     echo "用法: $0 <input.w3x> <output-prefix>"
     echo ""
-    echo "示例: $0 xxx.w3x UD-decisive-V40"
+    echo "示例: $0 xxx.w3x UD-decisive-V41"
     echo "  → converted-reforged/UD-V40-Reforged.w3x"
     echo "  → converted-1.27/UD-V40-1.27.w3x"
     exit 1

@@ -4,6 +4,7 @@ inject_ai_blademaster.py — Blademaster (剑圣) EVADE + HUNT + DASH
 
 状态: 0=NORMAL  1=WAIT(撤退)  2=DASH(突进攻击)  3=STRIKE(持续输出)
 
+V41 fixes: EVADE 0.5s window + 5s cooldown, STRIKE exits at HP<25%.
 核心: 所有攻击都先靠近目标(<100码)再取消buff攻击，解决隐身attack失效问题。
 攻击目标 = 敌方血量最少的英雄(FindLowestHpHero)。
 
@@ -34,13 +35,16 @@ import sys
 BM_GLOBALS = """
     // [BM] Blademaster EVADE+HUNT+DASH globals
     real    udg_bm_PrevHp1    = 0.0
+    real array udg_bm_HpHistory1  // 5-tick HP ring buffer for 0.5s EVADE window
+    integer udg_bm_HpIdx1     = 0  // ring buffer index
     integer udg_bm_State1     = 0
     integer udg_bm_SafeTicks1 = 0
     integer udg_bm_WaitTick1  = 0
     real    udg_bm_RetreatX1  = 0.0
     real    udg_bm_RetreatY1  = 0.0
     unit    udg_bm_Target1    = null
-    integer udg_bm_HuntCooldown1 = 0    // HUNT冷却计时(tick数,0=可触发)"""
+    integer udg_bm_HuntCooldown1 = 0    // HUNT冷却计时(tick数,0=可触发)
+    integer udg_bm_EvadeCooldown1 = 0   // EVADE冷却(tick数,0=可触发)"""
 
 BM_FUNCTIONS = """
 // ================================================================
@@ -261,10 +265,13 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     endif
     set curHp = GetUnitState(bm, UNIT_STATE_LIFE)
     set maxHp = GetUnitState(bm, UNIT_STATE_MAX_LIFE)
-    set prevHp = udg_bm_PrevHp1
     set state = udg_bm_State1
     set safeTicks = udg_bm_SafeTicks1
     set waitTick = udg_bm_WaitTick1
+    // [V41] 0.5s EVADE window: use 5-tick HP ring buffer
+    set udg_bm_HpHistory1[udg_bm_HpIdx1] = curHp
+    set prevHp = udg_bm_HpHistory1[ModuloInteger(udg_bm_HpIdx1 + 1, 5)]
+    set udg_bm_HpIdx1 = ModuloInteger(udg_bm_HpIdx1 + 1, 5)
     if prevHp <= 0.0 then
         set prevHp = curHp
     endif
@@ -323,10 +330,10 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         return
     endif
 
-    // ── STRIKE state (持续输出，被集火不打断) ──
+    // ── STRIKE state (持续输出) ──
     if state == 3 then
         set target = udg_bm_Target1
-        // 退出条件：目标死亡（追死为止）
+        // [V41] 退出条件1：目标死亡
         if target == null or IsUnitDeadBJ(target) then
             call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] STRIKE done (target dead) -> NORMAL|r")
             set udg_bm_State1 = 0
@@ -335,7 +342,19 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             set bm = null
             return
         endif
-        // 目标死亡是唯一退出条件，追死为止
+        // [V41] 退出条件2：HP < 25% -> 撤退保命
+        if curHp < maxHp * 0.25 then
+            call DisplayTextToForce(GetPlayersAll(), "|cffff4444[BM] STRIKE abort (hp=" + I2S(R2I(curHp)) + " < 25%) -> WAIT|r")
+            set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
+            call Trig_AIML_BM_UpdateRetreat(bm, enemyHero)
+            set udg_bm_State1 = 1
+            set udg_bm_SafeTicks1 = 0
+            set udg_bm_WaitTick1 = 0
+            set udg_bm_Target1 = null
+            set enemyHero = null
+            set bm = null
+            return
+        endif
         // 每tick重新下attack指令，咬住目标，覆盖母调度
         call IssueTargetOrder(bm, "attack", target)
         set bm = null
@@ -396,11 +415,14 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
 
     // ── NORMAL (safeTicks>=0) ──
 
-    // ① EVADE: 被集火
-    if drop >= maxHp * 0.15 then
+    // ① EVADE: 被集火 (V41: 0.5s window + cooldown)
+    if udg_bm_EvadeCooldown1 > 0 then
+        set udg_bm_EvadeCooldown1 = udg_bm_EvadeCooldown1 - 1
+    elseif drop >= maxHp * 0.15 then
         call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] EVADE! hp=" + I2S(R2I(curHp)) + "/" + I2S(R2I(maxHp)) + " drop=" + I2S(R2I(drop)) + "|r")
         set ww = IssueImmediateOrder(bm, "windwalk")
         if ww then
+            set udg_bm_EvadeCooldown1 = 50  // [V41] 5s EVADE cooldown after using windwalk
             set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
             call Trig_AIML_BM_UpdateRetreat(bm, enemyHero)
             set udg_bm_State1 = 1
@@ -442,6 +464,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
                 set ww = IssueImmediateOrder(bm, "windwalk")
                 if ww then
                     call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM] windwalk OK -> DASH|r")
+                    set udg_bm_EvadeCooldown1 = 50  // [V41] 5s EVADE cooldown after HUNT windwalk
                     set udg_bm_State1 = 2
                     set udg_bm_SafeTicks1 = 0
                     set udg_bm_Target1 = target
