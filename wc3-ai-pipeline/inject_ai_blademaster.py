@@ -44,7 +44,8 @@ BM_GLOBALS = """
     real    udg_bm_RetreatY1  = 0.0
     unit    udg_bm_Target1    = null
     integer udg_bm_HuntCooldown1 = 0    // HUNT冷却计时(tick数,0=可触发)
-    integer udg_bm_EvadeCooldown1 = 0   // EVADE冷却(tick数,0=可触发)"""
+    integer udg_bm_EvadeCooldown1 = 0   // EVADE冷却(tick数,0=可触发)
+"""
 
 BM_FUNCTIONS = """
 // ================================================================
@@ -586,6 +587,23 @@ def main():
         print("[BM] added state reset to Variable Reset block")
     else:
         print("[BM] WARN: Variable Reset block not found, skipping reset injection")
+
+    # Disable AntiCheat triggers (clear Actions body)
+    for ac_func in [
+        "Trig_AntiCheat_Computer1_BM_Actions",
+        "Trig_AntiCheat_Computer2_BM_Actions",
+    ]:
+        marker = f"function {ac_func} takes nothing returns nothing"
+        idx = src.find(marker)
+        if idx == -1:
+            print(f"[BM] WARN: {ac_func} not found, skip")
+            continue
+        end = src.find("endfunction", idx)
+        if end == -1:
+            continue
+        new_func = marker + f"{nl}    // [BM] disabled - BM AI manages windwalk usage{nl}endfunction"
+        src = src[:idx] + new_func + src[end + len("endfunction"):]
+        print(f"[BM] disabled {ac_func}")
 
     src = patch_bm_skill_learn(src)
 

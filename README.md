@@ -1,6 +1,6 @@
 # UD 决战操作图 — AI 注入流水线
 
-## 当前基线版本：V40
+## 当前基线版本：V42
 
 V40 是经过大量实战验证的稳定基线，主要特性：
 
@@ -152,7 +152,7 @@ DK 移速 ~270 码/秒，0.3s tick 下每 tick 移动 ~81 码。
 - `'Oshd'`（暗影猎手）已从远程英雄白名单移除
 
 
-## 剑圣 AI 详情（inject_ai_blademaster.py，V39.21 重写）
+## 剑圣 AI 详情（inject_ai_blademaster.py，V42 更新）
 
 > **核心突破（V39.21）**：所有攻击都先 `move` 靠近目标到 < 100 码，再 `UnitRemoveBuffs` 破隐 + `attack`。
 > 之前所有版本失败的根因是：**隐身状态下直接对远处目标下 attack 指令，AI 单位会卡住不动**（详见 DEGRADE 坑 14）。
@@ -186,6 +186,8 @@ DK 移速 ~270 码/秒，0.3s tick 下每 tick 移动 ~81 码。
 - **破隐方式**：`UnitRemoveBuffs(bm, true, false)`（移除所有正面 buff，不依赖 rawcode；`UnitRemoveAbility` 无效）
 - **疾风步暴击加成**：破隐后首次攻击自动触发疾风步暴击
 - **加点顺序**：`wk > cr > ww > cr > ww > cr > ww`（疾风步优先，去掉幻像）
+- **AntiCheat 禁用**（V42）：原图每 50s 清 BM 蓝量（`SetUnitManaPercentBJ(Obla, 0.00)`），注入时自动清空 `AntiCheat_Computer{1,2}_BM` 的 Actions 函数体；`AntiCheat_Player{1,2}_LastUnit`（最后单位透视）保留
+- **AntiCheat 禁用**：原图每 50s 清 BM 蓝量（），V42 起注入时自动清空  函数体；（最后单位透视）保留
 
 ## 关键配置文件
 
