@@ -515,6 +515,23 @@ endfunction"""
     # Hero dispatch, peasant tower building, and unit orders still run.
     # Mode ticks (surround/escape) override hero orders at higher frequency.
     #
+    # [V42] Exclude kodo beasts from Combat_AI army-attack so our devour AI has full control
+    # Patch the filter functions used by GetUnitsOfPlayerMatching in the 2 GroupPointOrderLocBJ lines
+    kodo_exclude1 = "function Trig_Computer1Combat_AI_Func001001002 takes nothing returns boolean"
+    kodo_exclude2 = "function Trig_Computer2Combat_AI_Func002001002 takes nothing returns boolean"
+    if kodo_exclude1 in src:
+        old1 = "return GetBooleanAnd( Trig_Computer1Combat_AI_Func001001002001(), Trig_Computer1Combat_AI_Func001001002002() )"
+        new1 = "return GetBooleanAnd( Trig_Computer1Combat_AI_Func001001002001(), GetBooleanAnd( Trig_Computer1Combat_AI_Func001001002002(), GetUnitTypeId(GetFilterUnit()) != 'okod' ) )"
+        if old1 in src:
+            src = src.replace(old1, new1, 1)
+            print("[V42] excluded okod from Computer1Combat_AI army-attack filter")
+    if kodo_exclude2 in src:
+        old2 = "return GetBooleanAnd( Trig_Computer2Combat_AI_Func002001002001(), Trig_Computer2Combat_AI_Func002001002002() )"
+        new2 = "return GetBooleanAnd( Trig_Computer2Combat_AI_Func002001002001(), GetBooleanAnd( Trig_Computer2Combat_AI_Func002001002002(), GetUnitTypeId(GetFilterUnit()) != 'okod' ) )"
+        if old2 in src:
+            src = src.replace(old2, new2, 1)
+            print("[V42] excluded okod from Computer2Combat_AI army-attack filter")
+
     # Computer1Combat_AI_Actions:
     c1_marker = "function Trig_Computer1Combat_AI_Actions takes nothing returns nothing"
     c1_gpo1 = 'call GroupPointOrderLocBJ( GetUnitsOfPlayerMatching(Player(0), Condition(function Trig_Computer1Combat_AI_Func001001002)), "attack",'

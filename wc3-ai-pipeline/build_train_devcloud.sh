@@ -17,6 +17,7 @@
 #   [5] 补刀(重写SalvoTick)     inject_ai_creep_control.py
 #   [6] 围杀                    inject_ai_surround.py
 #   [7] 剑圣逃脱                inject_ai_blademaster.py
+#   [8] 科多兽吞噬后撤           inject_ai_kodo.py
 #   [8] Debug命令（可选）       inject_debug.py
 
 set -euo pipefail
@@ -34,6 +35,7 @@ INJECTOR_FOCUS="$SCRIPT_DIR/inject_ai_focus_retreat.py"
 INJECTOR_CREEP="$SCRIPT_DIR/inject_ai_creep_control.py"
 INJECTOR_SURROUND="$SCRIPT_DIR/inject_ai_surround.py"
 INJECTOR_BM="$SCRIPT_DIR/inject_ai_blademaster.py"
+INJECTOR_KODO="$SCRIPT_DIR/inject_ai_kodo.py"
 INJECTOR_ESCAPE="$SCRIPT_DIR/inject_ai_escape.py"
 INJECTOR_DEBUG="$SCRIPT_DIR/inject_debug.py"
 REPACK="$SCRIPT_DIR/tools/repack"
@@ -63,7 +65,7 @@ OUT_REFORGED="$_DIR_REFORGED/${_BASENAME}-Reforged.w3x"
 OUT_127="$_DIR_127/${_BASENAME}-1.27.w3x"
 
 # 检查必要工具和脚本
-for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_SALVO" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND" "$INJECTOR_BM"; do
+for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_SALVO" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND" "$INJECTOR_BM" "$INJECTOR_KODO"; do
     if [ ! -e "$f" ]; then
         echo "ERROR: 缺少: $f"
         exit 1
@@ -145,21 +147,29 @@ else
     python3 "$INJECTOR_BM" "$J"
 fi
 
+# [9/11] 科多兽吞噬后撤（依赖 SalvoTick）
+if grep -q "function Trig_AIML_KodoRetreatForPlayer" "$J"; then
+    echo "[9/11] 科多兽吞噬后撤已存在，跳过"
+else
+    echo "[9/11] 注入科多兽吞噬后撤..."
+    python3 "$INJECTOR_KODO" "$J"
+fi
+
 # [8] Debug命令（可选）
 if [ -f "$INJECTOR_DEBUG" ]; then
     if grep -q "function Trig_AIML_DebugToggle" "$J"; then
-        echo "[9/10] Debug命令已存在，跳过"
+        echo "[10/11] Debug命令已存在，跳过"
     else
         echo "[9/10] 注入Debug命令..."
         python3 "$INJECTOR_DEBUG" "$J"
     fi
 else
-    echo "[9/10] inject_debug.py 不存在，跳过"
+    echo "[10/11] inject_debug.py 不存在，跳过"
 fi
 
 # [9] pjass 语法检查
 if [ -f "$PJASS" ] && [ -f "$COMMON_J" ] && [ -f "$BLIZZARD_J" ]; then
-    echo "[10/10] pjass 语法检查..."
+    echo "[11/11] pjass 语法检查..."
     ERRORS=$("$PJASS" "$COMMON_J" "$BLIZZARD_J" "$J" 2>&1 | grep -c "$(basename "$J"):" || true)
     if [ "$ERRORS" -gt 0 ]; then
         echo "ERROR: $ERRORS 个语法错误:"
@@ -168,7 +178,7 @@ if [ -f "$PJASS" ] && [ -f "$COMMON_J" ] && [ -f "$BLIZZARD_J" ]; then
     fi
     echo "    0 errors ✓"
 else
-    echo "[9/10] pjass 不可用，跳过语法检查"
+    echo "[11/11] pjass 不可用，跳过语法检查"
 fi
 
 # 打包 Reforged
@@ -208,6 +218,6 @@ echo "    $OUT_127 ($(du -h $OUT_127 | cut -f1))"
 echo ""
 echo "=========================================="
 echo " 完成!"
-echo " 功能：TC践踏 | 齐射 | 集火后撤 | 补刀 | 围杀 | 逃跑 | 剑圣逃脱"
+echo " 功能：TC践踏 | 齐射 | 集火后撤 | 补刀 | 围杀 | 逃跑 | 剑圣逃脱 | 科多后撤"
 echo " 命令：-debug | -creep | -surround | -escape"
 echo "=========================================="
