@@ -1,0 +1,110 @@
+<svg viewBox="0 0 680 760" xmlns="http://www.w3.org/2000/svg" width="680" height="760" role="img">
+  <title>Warcraft-III 项目架构</title>
+  <desc>UD 决战操作图 AI 注入流水线总览：输入底座图、9 步注入流水线、双版本输出、旁支 APM 工具</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5"
+      markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <!-- Header -->
+  <text x="340" y="28" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#1a1a1a">Warcraft-III 项目架构</text>
+  <text x="340" y="50" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="400" fill="#666666">UD 决战操作图 AI 注入流水线 · 当前基线 V42</text>
+
+  <!-- Input section -->
+  <text x="340" y="76" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="500" fill="#888888" letter-spacing="0.5">输入 · INPUT</text>
+  <g>
+    <rect x="200" y="84" width="280" height="52" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+    <text x="340" y="104" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#3C3489">origin-reforged/</text>
+    <text x="340" y="122" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#633806">UD-decisive-reforged.w3x (底座)</text>
+  </g>
+
+  <!-- Arrow into pipeline -->
+  <path d="M340 138 L340 160" stroke="#5F5E5A" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Pipeline container -->
+  <rect x="40" y="164" width="600" height="328" rx="12" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="56" y="186" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">wc3-ai-pipeline</text>
+  <text x="56" y="202" font-family="sans-serif" font-size="12" font-weight="400" fill="#185FA5">build_train_devcloud.sh · Python 注入 + Bash 打包</text>
+  <text x="624" y="186" text-anchor="end" font-family="sans-serif" font-size="12" font-weight="500" fill="#888888" letter-spacing="0.5">11 步流水线</text>
+
+  <!-- Row 1: steps 1-3 -->
+  <g>
+    <rect x="56" y="216" width="180" height="44" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="146" y="238" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">1. 解包 .j + .doo</text>
+    <rect x="250" y="216" width="180" height="44" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="340" y="238" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">2. 齐射 Salvo</text>
+    <rect x="444" y="216" width="180" height="44" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="534" y="238" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">3. 英雄魔法 TC/SH</text>
+  </g>
+  <!-- Row 2: steps 4-6 -->
+  <g>
+    <rect x="56" y="268" width="180" height="44" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="146" y="290" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">4. 集火后撤</text>
+    <rect x="250" y="268" width="180" height="44" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="340" y="290" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">5. 补刀 Creep</text>
+    <rect x="444" y="268" width="180" height="44" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="534" y="290" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">6. 围杀 Surround</text>
+  </g>
+  <!-- Row 3: steps 7-9 -->
+  <g>
+    <rect x="56" y="320" width="180" height="44" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="146" y="342" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">7. 逃跑 Escape</text>
+    <rect x="250" y="320" width="180" height="44" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="340" y="342" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">8. 剑圣 BM AI</text>
+    <rect x="444" y="320" width="180" height="44" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="534" y="342" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">9. 科多 Kodo</text>
+  </g>
+  <!-- Row 4: pjass -->
+  <rect x="56" y="372" width="568" height="36" rx="8" fill="#B5D4F4" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="340" y="394" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#0C447C">10–11. Debug 命令 + pjass 语法检查 (0 errors ✓)</text>
+
+  <!-- Branch arrow -->
+  <path d="M340 412 L340 428" stroke="#5F5E5A" stroke-width="1.5" fill="none"/>
+
+  <!-- Branching: Reforged vs 1.27 -->
+  <g>
+    <rect x="56" y="432" width="276" height="48" rx="8" fill="#85B7EB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="194" y="450" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#042C53">Reforged 路径</text>
+    <text x="194" y="468" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#0C447C">stormpatch 直接替换 .j 打包</text>
+
+    <rect x="348" y="432" width="276" height="48" rx="8" fill="#85B7EB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="486" y="450" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#042C53">1.27 路径</text>
+    <text x="486" y="468" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#0C447C">7 项降级 + sed + repack</text>
+  </g>
+
+  <!-- Arrows to outputs -->
+  <path d="M194 482 L194 520" stroke="#5F5E5A" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M486 482 L486 520" stroke="#5F5E5A" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Outputs -->
+  <text x="340" y="510" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="500" fill="#888888" letter-spacing="0.5">输出 · OUTPUT</text>
+  <g>
+    <rect x="56" y="524" width="276" height="56" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+    <text x="194" y="544" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#173404">converted-reforged/</text>
+    <text x="194" y="562" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#27500A">UD-decisive-V42-Reforged.w3x</text>
+
+    <rect x="348" y="524" width="276" height="56" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+    <text x="486" y="544" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#173404">converted-1.27/</text>
+    <text x="486" y="562" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#27500A">UD-decisive-V42-1.27.w3x</text>
+  </g>
+
+  <!-- Side tool: wc3apm-1.27 -->
+  <rect x="40" y="610" width="600" height="120" rx="12" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text x="56" y="632" font-family="sans-serif" font-size="13" font-weight="500" fill="#26215C">wc3apm-1.27  ·  旁支工具 (2026-06-30)</text>
+  <text x="624" y="632" text-anchor="end" font-family="sans-serif" font-size="12" font-weight="500" fill="#888888" letter-spacing="0.5">独立子项目</text>
+
+  <g>
+    <rect x="56" y="646" width="280" height="68" rx="8" fill="#CECBF6" stroke="#534AB7" stroke-width="0.5"/>
+    <text x="196" y="666" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#26215C">DLL 注入 + 透明置顶窗口</text>
+    <text x="196" y="684" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#3C3489">不 hook D3D,用 WS_EX_TOPMOST</text>
+    <text x="196" y="700" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#3C3489">键鼠 LL hook + WC3 前台判定</text>
+
+    <rect x="344" y="646" width="280" height="68" rx="8" fill="#CECBF6" stroke="#534AB7" stroke-width="0.5"/>
+    <text x="484" y="666" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="#26215C">自适应滑动窗口 APM</text>
+    <text x="484" y="684" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#3C3489">窗口 = min(已游戏时长, 60s)</text>
+    <text x="484" y="700" text-anchor="middle" font-family="sans-serif" font-size="12" font-weight="400" fill="#3C3489">颜色随 APM 分档: 绿/蓝/橙/红</text>
+  </g>
+</svg>
