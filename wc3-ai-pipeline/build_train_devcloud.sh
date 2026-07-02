@@ -37,6 +37,7 @@ INJECTOR_SURROUND="$SCRIPT_DIR/inject_ai_surround.py"
 INJECTOR_BM="$SCRIPT_DIR/inject_ai_blademaster.py"
 INJECTOR_KODO="$SCRIPT_DIR/inject_ai_kodo.py"
 INJECTOR_ESCAPE="$SCRIPT_DIR/inject_ai_escape.py"
+INJECTOR_BLK="$SCRIPT_DIR/inject_ai_body_block.py"
 INJECTOR_DEBUG="$SCRIPT_DIR/inject_debug.py"
 REPACK="$SCRIPT_DIR/tools/repack"
 HEADER_BIN="$SCRIPT_DIR/../base-1.27/base-1.27.w3x"  # 1.27 header source (stable, do not delete)
@@ -65,7 +66,7 @@ OUT_REFORGED="$_DIR_REFORGED/${_BASENAME}-Reforged.w3x"
 OUT_127="$_DIR_127/${_BASENAME}-1.27.w3x"
 
 # 检查必要工具和脚本
-for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_SALVO" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND" "$INJECTOR_BM" "$INJECTOR_KODO"; do
+for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_SALVO" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND" "$INJECTOR_BM" "$INJECTOR_KODO" "$INJECTOR_BLK"; do
     if [ ! -e "$f" ]; then
         echo "ERROR: 缺少: $f"
         exit 1
@@ -137,6 +138,14 @@ if grep -q "function Trig_AIML_EscapeTick" "$J"; then
 else
     echo "[7/10] 注入逃跑..."
     python3 "$INJECTOR_ESCAPE" "$J" "$DOO"
+fi
+
+# [8/10] 卡位（Body Block, V11）
+if grep -q "function Trig_BLK_Tick" "$J"; then
+    echo "[8/10] 卡位已存在，跳过"
+else
+    echo "[8/10] 注入卡位..."
+    python3 "$INJECTOR_BLK" "$J"
 fi
 
 # [8/10] 剑圣逃脱（依赖 SH_Tick，必须在英雄魔法之后）
