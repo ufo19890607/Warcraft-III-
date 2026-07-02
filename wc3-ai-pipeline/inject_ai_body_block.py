@@ -34,6 +34,9 @@ def main():
         "    boolean udg_blk_LogOpen     = false",
         "    player  udg_blk_AIPlayer    = null",
         "    player  udg_blk_UserPlayer  = null",
+        "    // --- shared globals (declare here if not in base map) ---",
+        "    integer udg_aiml_Round1Mode    = 0",
+        "    integer udg_aiml_Round1Pref    = 0",
     ]) + nl
     src = src.replace("endglobals", g + "endglobals")
     print("[BLK] globals ok")
