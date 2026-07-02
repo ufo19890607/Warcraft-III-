@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """
-inject_hero_magic.py - Shadow Hunter AI
+inject_ai_shaman.py - Shadow Hunter AI (independent tick)
 
-Inject:
-  1. Shadow Hunter AI (configurable tick):
-     - hex: cast on enemy Death Knight only
-     - healingwave: cast when any ally hero HP drops >= 15% in one tick
-  2. Clear original Func007A hex+healingwave body
+Finds the AI player's Shadow Hunter ('Oshd') and controls hex + healingwave
+via its own timer tick.  Does NOT depend on Combat_AI hooks.
 
-usage: inject_hero_magic.py <input.j> <output.j>
+Injects:
+  1. SH globals (hero HP tracking)
+  2. SH functions (ScanHeroes, FindHealTarget, ActForUnit, Tick)
+  3. SH_Init call in main()
+  4. Clears original Func007A hex+healingwave body
+
+usage: inject_ai_shaman.py <input.j> <output.j>
 """
+
 import sys
 import re
 from ai_config import TICK_HERO_MAGIC
 
-# ---- Globals ----
-MAGIC_GLOBALS = """    // [HERO-MAGIC] Shadow Hunter AI globals
+SH_GLOBALS = """    // [SHAMAN] Shadow Hunter AI globals
     real    udg_sh_HeroPrevHp1 = 0.0
     real    udg_sh_HeroPrevHp2 = 0.0
     real    udg_sh_HeroPrevHp3 = 0.0
@@ -25,10 +28,9 @@ MAGIC_GLOBALS = """    // [HERO-MAGIC] Shadow Hunter AI globals
     unit    udg_sh_HeroUnit3   = null
     unit    udg_sh_HeroUnit4   = null"""
 
-
-MAGIC_FUNCTIONS = """
+SH_FUNCTIONS = """
 //===========================================================================
-// [HERO-MAGIC] Shadow Hunter AI - hex on DK, healingwave on HP-drop hero
+// [SHAMAN] Shadow Hunter AI - hex on DK, healingwave on HP-drop hero
 //===========================================================================
 // Scan allied heroes, record HP, detect drop this tick
 function Trig_AIML_SH_ScanHeroes takes player p returns nothing
@@ -144,6 +146,7 @@ function Trig_AIML_SH_ActForUnit takes unit sh, player ownP, player enemyP retur
         set g = null
         if dk != null and not IsUnitType(dk, UNIT_TYPE_DEAD) then
             call IssueTargetOrder(sh, "hex", dk)
+            call DisplayTimedTextToForce(GetPlayersAll(), 2.00, "|cffff00ff[SHAMAN] HEX on DK|r")
             set dk = null
             return
         endif
@@ -154,39 +157,37 @@ function Trig_AIML_SH_ActForUnit takes unit sh, player ownP, player enemyP retur
     if healTgt != null then
         if GetUnitState(sh, UNIT_STATE_MANA) >= 65.0 then
             call IssueTargetOrder(sh, "healingwave", healTgt)
+            call DisplayTimedTextToForce(GetPlayersAll(), 2.00, "|cff00ff00[SHAMAN] HEALING WAVE|r")
         endif
     endif
     set healTgt = null
 endfunction
 
 function Trig_AIML_SH_Tick takes nothing returns nothing
-    local unit sh1
-    local unit sh2
+    local unit sh
     local group g
-    // Shadow Hunter for Player(0)
-    set g = CreateGroup()
-    call GroupEnumUnitsOfPlayer(g, Player(0), Condition(function Trig_AIML_SH_IsOshd))
-    set sh1 = FirstOfGroup(g)
-    call DestroyGroup(g)
-    set g = null
-    call Trig_AIML_SH_ScanHeroes(Player(0))
-    call Trig_AIML_SH_ActForUnit(sh1, Player(0), Player(1))
-    set sh1 = null
-    // Shadow Hunter for Player(1)
-    set g = CreateGroup()
-    call GroupEnumUnitsOfPlayer(g, Player(1), Condition(function Trig_AIML_SH_IsOshd))
-    set sh2 = FirstOfGroup(g)
-    call DestroyGroup(g)
-    set g = null
-    call Trig_AIML_SH_ScanHeroes(Player(1))
-    call Trig_AIML_SH_ActForUnit(sh2, Player(1), Player(0))
-    set sh2 = null
+    local integer i = 0
+    loop
+        exitwhen i >= 2
+        if GetPlayerController(Player(i)) == MAP_CONTROL_COMPUTER and GetPlayerSlotState(Player(i)) == PLAYER_SLOT_STATE_PLAYING then
+            set g = CreateGroup()
+            call GroupEnumUnitsOfPlayer(g, Player(i), Condition(function Trig_AIML_SH_IsOshd))
+            set sh = FirstOfGroup(g)
+            call DestroyGroup(g)
+            set g = null
+            call Trig_AIML_SH_ScanHeroes(Player(i))
+            call Trig_AIML_SH_ActForUnit(sh, Player(i), Player(1 - i))
+            set sh = null
+        endif
+        set i = i + 1
+    endloop
 endfunction
 
 function Trig_AIML_SH_Init takes nothing returns nothing
     local trigger t = CreateTrigger()
-    call TriggerRegisterTimerEvent(t, __TICK_HERO_MAGIC__, true)
+    call TriggerRegisterTimerEvent(t, __TICK_SHAMAN__, true)
     call TriggerAddAction(t, function Trig_AIML_SH_Tick)
+    call DisplayTimedTextToForce(GetPlayersAll(), 5.00, "|cff00ff00[SHAMAN] init (tick=" + R2SW(__TICK_SHAMAN__,2,2) + "s)|r")
     set t = null
 endfunction
 
@@ -205,67 +206,74 @@ def inject(in_path, out_path):
     nl = detect_newline(raw)
     src = raw.decode("latin-1")
 
-    # 2) Inject globals into endglobals
+    # 1) Inject globals
     eg = "endglobals" + nl
     if eg not in src:
         raise SystemExit("ERROR: no 'endglobals' found")
-    extra_g = MAGIC_GLOBALS.replace("\n", nl) + nl
+    extra_g = SH_GLOBALS.replace("\n", nl) + nl
     idx = src.find(eg)
     src = src[:idx] + extra_g + src[idx:]
-    print("[HERO-MAGIC] inserted globals")
+    print("[SHAMAN] inserted globals")
 
-    # 3) Inject functions after endglobals
+    # 2) Inject functions after endglobals
     idx_after = src.find(eg) + len(eg)
-    funcs = MAGIC_FUNCTIONS.replace("__TICK_HERO_MAGIC__", f"{TICK_HERO_MAGIC:.2f}")
+    funcs = SH_FUNCTIONS.replace("__TICK_SHAMAN__", f"{TICK_HERO_MAGIC:.2f}")
     funcs = funcs.replace("\n", nl)
     src = src[:idx_after] + funcs + src[idx_after:]
-    print("[HERO-MAGIC] inserted functions")
+    print("[SHAMAN] inserted functions")
 
-    # 4) Hook SH_Init into main()
-    main_pat = re.compile(
-        r'function main takes nothing returns nothing' + re.escape(nl)
-        + r'(.*?)' + re.escape(nl) + r'endfunction',
-        re.DOTALL,
-    )
-    m_main = main_pat.search(src)
-    if m_main and "call Trig_AIML_SH_Init()" not in src:
-        body = m_main.group(1)
-        new_main = (
-            f"function main takes nothing returns nothing{nl}"
-            f"{body}{nl}"
-            f"    call Trig_AIML_SH_Init(){nl}"
-            f"endfunction"
+    # 3) Hook SH_Init into main() after TC_Stomp_Init or other AI init
+    hook_point = None
+    for anchor in [
+        "call Trig_AIML_TC_Stomp_Init()",
+        "call Trig_AIML_SurroundInit()",
+        "call Trig_AIML_SalvoInit()",
+    ]:
+        if anchor in src:
+            idx_anchor = src.find(anchor)
+            idx_eol = src.find(nl, idx_anchor)
+            hook_point = idx_eol + len(nl)
+            break
+    if hook_point is None:
+        runit = "call RunInitializationTriggers(  )" + nl
+        if runit in src:
+            idx_runit = src.find(runit)
+            hook_point = idx_runit + len(runit)
+
+    if hook_point and "call Trig_AIML_SH_Init()" not in src:
+        call_site = (
+            "    // [SHAMAN] Shadow Hunter AI tick" + nl
+            + "    call Trig_AIML_SH_Init()" + nl
         )
-        src = src[: m_main.start()] + new_main + src[m_main.end():]
-        print("[HERO-MAGIC] hooked SH_Init into main()")
+        src = src[:hook_point] + call_site + src[hook_point:]
+        print("[SHAMAN] hooked SH_Init into main()")
 
-    # 5) Clear original Func007A hex+healingwave body (both players)
-    for player_idx in ["1", "2"]:
-        func_name = f"Trig_Computer{player_idx}Combat_AI_Func007A"
-        marker = f"function {func_name} takes nothing returns nothing"
+    # 4) Clear original Func007A hex+healingwave body (both players)
+    for pidx in ["1", "2"]:
+        fname = f"Trig_Computer{pidx}Combat_AI_Func007A"
+        marker = f"function {fname} takes nothing returns nothing"
         idx7 = src.find(marker)
         if idx7 == -1:
-            print(f"WARN: {func_name} not found, skipping")
+            print(f"  WARN: {fname} not found")
             continue
         end7 = src.find("endfunction", idx7)
         if end7 == -1:
             continue
         new_func = (
-            f"function {func_name} takes nothing returns nothing{nl}"
-            f"    // [HERO-MAGIC] Shadow Hunter AI handled by Trig_AIML_SH_Tick{nl}"
+            f"function {fname} takes nothing returns nothing{nl}"
+            f"    // [SHAMAN] handled by Trig_AIML_SH_Tick{nl}"
             f"endfunction"
         )
         src = src[:idx7] + new_func + src[end7 + len("endfunction"):]
-        print(f"[HERO-MAGIC] cleared {func_name}")
+        print(f"[SHAMAN] cleared {fname}")
 
-    # 6) Write out
-    with open(out_path, "wb") as f:
-        f.write(src.encode("latin-1"))
-    print(f"[HERO-MAGIC] OK -> {out_path} ({len(src)} bytes)")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(src)
+    print(f"[SHAMAN] OK -> {out_path} ({len(src.encode('utf-8'))} bytes)")
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print(__doc__)
-        sys.exit(64)
+        print("usage: inject_ai_shaman.py <input.j> <output.j>")
+        sys.exit(1)
     inject(sys.argv[1], sys.argv[2])
