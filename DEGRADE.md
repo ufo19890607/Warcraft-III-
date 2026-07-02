@@ -551,3 +551,52 @@ endif
 1. **pjass 不能100%保证 WC3 1.27 兼容**——它可能支持 Reforged 语法特性
 2. **编译阶段失败不依赖运行时路径**——即使代码永远不会执行，只要存在非法语法就编译失败
 3. **WC3 1.27 可用运算符**：`+` `-` `*` `/`（算术）、`==` `!=` `<` `>` `<=` `>=`（比较）、`and` `or` `not`（逻辑）——**没有 `%`**
+
+# AI Rules — 注入模块开发铁律
+
+## 核心原则：改动前先看已有设计，别自己发明做法
+
+### Round1 互斥机制（踩坑 N 次）
+
+**规则：** 新增 Round 1 模式的 toggle 命令时：
+- ✅ **只设 Round1Pref，不设 Round1Mode**
+- ❌ 禁止直接修改 Round1Mode
+- 原因：Round1Mode 由倒计时结束回调统一应用 (`Round1Mode = Round1Pref`)，
+  提前修改会导致 Combat_AI guard 截断全军攻击 → AI 不出兵
+
+**已有模式（抄就对了）：**
+```
+function Trig_AIML_SurroundToggle takes nothing returns nothing
+    set udg_aiml_Round1Mode = 1   ← V42 的风格（立即生效）
+    set udg_aiml_Round1Pref = 1
+```
+
+**但更稳妥的做法（V43/V40 理念）：**
+```
+function Trig_AIML_XxxToggle takes nothing returns nothing
+    set udg_aiml_Round1Pref = N   ← 只设 Pref
+    // 不要动 Round1Mode！让倒计时回调处理
+```
+
+### Combat_AI guard
+
+- 条件：`Round1Mode >= 1` 时截断全军 attack 指令
+- Combat_AI 同时负责：农民造塔、单位生产 → 不能完全禁用
+- 所以 Round1Mode 的值直接影响出兵
+
+### 构建验证清单（每次改注入脚本后必做）
+
+1. pjass 0 errors ✅
+2. 选择底座图正确：`origin-reforged/UD-decisive-optimized.w3x`（不是 base-1.27）
+3. 测试：不输入任何命令 → 倒计时结束 AI 正常出兵
+4. 测试：先 `-creep` → 出兵正常
+5. 测试：先 `-block` 再 `-creep` → 出兵正常
+6. 测试：先 `-block` → 卡位工作，然后 `-creep` → 卡位停止
+
+### 过去踩过的坑（禁止再犯）
+
+| # | 问题 | 根因 | 日期 |
+|---|------|------|------|
+| 1 | 底座图用错 base-1.27 导致缺少模块 | 忘了底座是 origin-reforged | V43 早期 |
+| 2 | block 注入导致 creep 不出兵 | block toggle 直接设 Round1Mode | V43 fix |
+| 3 | blockdebug 没删除 | 代码清理不完整 | V12 |

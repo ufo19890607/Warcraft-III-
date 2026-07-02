@@ -160,13 +160,12 @@ endfunction
     body += """function Trig_BLK_ToggleAction takes nothing returns nothing
     if udg_blk_Enabled then
         set udg_blk_Enabled = false
-        set udg_aiml_Round1Mode = 0
         set udg_aiml_Round1Pref = 0
         set udg_blk_LogOpen = false
         call Trig_BLK_FlushLog()
         """ + D + '"[AIML] |cff00ff00Body-Block OFF|r (files=" + I2S(udg_blk_FlushCount) + ")")' + nl + """    else
         set udg_blk_Enabled = true
-        set udg_aiml_Round1Mode = 3
+        set udg_aiml_Round1Pref = 3
         set udg_aiml_Round1Pref = 3
         set udg_blk_TickCount = 0
         set udg_blk_SideToggle = 0
@@ -175,7 +174,7 @@ endfunction
         set udg_blk_LogOpen = true
         call PreloadGenClear()
         call PreloadGenStart()
-        """ + D + '"|cffff0000[AIML] Body-Block ON (Round1Mode=3)|r")' + nl + """    endif
+        """ + D + '"|cffff0000[AIML] Body-Block ON (Round1Pref=3, activated on countdown)|r")' + nl + """    endif
 endfunction
 
 """ + nl
@@ -316,8 +315,8 @@ endfunction
     src = src.replace("function InitCustomTriggers", body + "function InitCustomTriggers")
     print("[BLK] functions ok")
 
-    # hook
-    idx = src.find("call InitBlizzard(  )")
+    # hook: place after RunInitializationTriggers (same as other AI modules)
+    idx = src.find("call RunInitializationTriggers(  )")
     if idx != -1:
         eol = src.find(nl, idx)
         src = src[:eol + len(nl)] + "    call InitTrig_BLK()" + nl + src[eol + len(nl):]

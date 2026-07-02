@@ -12,7 +12,8 @@
 #
 # 注入顺序（7项功能）:
 #   [2] 齐射                    inject_salvo.py
-#   [3] 英雄魔法(TC践踏+暗影猎手) inject_hero_magic.py
+#   [3] 英雄魔法(暗影猎手) inject_hero_magic.py
+#   [3.5] TC践踏 inject_ai_tc_stomp.py
 #   [4] 集火后撤                inject_ai_focus_retreat.py
 #   [5] 补刀(重写SalvoTick)     inject_ai_creep_control.py
 #   [6] 围杀                    inject_ai_surround.py
@@ -31,6 +32,7 @@ BLIZZARD_J="$SCRIPT_DIR/refs/Blizzard.j"
 
 INJECTOR_SALVO="$SCRIPT_DIR/inject_salvo.py"
 INJECTOR_MAGIC="$SCRIPT_DIR/inject_hero_magic.py"
+INJECTOR_TC_STOMP="$SCRIPT_DIR/inject_ai_tc_stomp.py"
 INJECTOR_FOCUS="$SCRIPT_DIR/inject_ai_focus_retreat.py"
 INJECTOR_CREEP="$SCRIPT_DIR/inject_ai_creep_control.py"
 INJECTOR_SURROUND="$SCRIPT_DIR/inject_ai_surround.py"
@@ -66,7 +68,7 @@ OUT_REFORGED="$_DIR_REFORGED/${_BASENAME}-Reforged.w3x"
 OUT_127="$_DIR_127/${_BASENAME}-1.27.w3x"
 
 # 检查必要工具和脚本
-for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_SALVO" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND" "$INJECTOR_BM" "$INJECTOR_KODO" "$INJECTOR_BLK"; do
+for f in "$STORMTOOL" "$STORMPATCH" "$INJECTOR_SALVO" "$INJECTOR_MAGIC" "$INJECTOR_FOCUS" "$INJECTOR_CREEP" "$INJECTOR_SURROUND" "$INJECTOR_TC_STOMP" "$INJECTOR_BM" "$INJECTOR_KODO" "$INJECTOR_BLK"; do
     if [ ! -e "$f" ]; then
         echo "ERROR: 缺少: $f"
         exit 1
@@ -101,11 +103,19 @@ else
 fi
 
 # [3] 英雄魔法（TC践踏 + 暗影猎手）
-if grep -q "function Trig_AIML_TC_Stomp_Logic" "$J"; then
-    echo "[3/10] 英雄魔法已存在，跳过"
+if grep -q "function Trig_AIML_SH_ActForUnit" "$J"; then
+    echo "[3/10] 暗影猎手已存在，跳过"
 else
-    echo "[3/10] 注入英雄魔法（TC践踏 + 暗影猎手）..."
+    echo "[3/10] 注入暗影猎手..."
     python3 "$INJECTOR_MAGIC" "$J" "$J"
+fi
+
+# [3.5] TC 智能战争践踏（独立tick，不依赖底座图）
+if grep -q "function Trig_AIML_TC_Stomp_Tick" "$J"; then
+    echo "[3.5/10] TC践踏已存在，跳过"
+else
+    echo "[3.5/10] 注入TC智能践踏..."
+    python3 "$INJECTOR_TC_STOMP" "$J" "$J"
 fi
 
 # [4] 集火后撤
@@ -227,6 +237,6 @@ echo "    $OUT_127 ($(du -h $OUT_127 | cut -f1))"
 echo ""
 echo "=========================================="
 echo " 完成!"
-echo " 功能：TC践踏 | 齐射 | 集火后撤 | 补刀 | 围杀 | 逃跑 | 剑圣逃脱 | 科多后撤"
+echo " 功能：TC践踏 | 暗影猎手 | 齐射 | 集火后撤 | 补刀 | 围杀 | 逃跑 | 剑圣逃脱 | 科多后撤"
 echo " 命令：-debug | -creep | -surround | -escape"
 echo "=========================================="
