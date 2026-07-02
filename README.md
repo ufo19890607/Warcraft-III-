@@ -40,6 +40,7 @@ cd /data/ufo/Warcraft-III/wc3-ai-pipeline/
 | 8 | 剑圣逃脱（BM） | `inject_ai_blademaster.py` | — |
 | 9 | 科多兽吞噬后撤 | `inject_ai_kodo.py` | — |
 | 10 | Debug 开关 + APM/性能监控 | `inject_debug.py` | `-debug` |
+| 11 | 卡位（Body Block, Round 1） | `inject_ai_body_block.py` | `-block` |
 | 9 | pjass 语法检查 + 打包 | — | — |
 
 ## Round 1 模式体系（V40 核心设计）
@@ -51,18 +52,19 @@ cd /data/ufo/Warcraft-III/wc3-ai-pipeline/
 | （默认） | 0 | 正常模式，Combat_AI 全功能运行 |
 | `-surround` | 1 | 围杀模式，SurroundTick 接管英雄，Combat_AI 全军攻击被截断 |
 | `-escape` | 2 | 逃跑模式，EscapeTick 接管英雄，Combat_AI 全军攻击被截断 |
+| `-block` | 3 | 卡位模式，BlkTick 控制 FS 拦截 DK 移动路线 |
 | `-creep` | 0 | 回到默认补刀模式 |
 
 **模式互斥矩阵**：
 
-| 组件 | 默认(0) | Surround(1) | Escape(2) |
-|------|---------|------------|----------|
-| Combat_AI 全军攻击 | ✅ 运行 | ❌ 截断 | ❌ 截断 |
-| Combat_AI 英雄调度 | ✅ 运行 | ✅ 运行(Tick覆盖) | ✅ 运行(Tick覆盖) |
-| Combat_AI 农民造塔 | ✅ 运行 | ✅ 运行 | ✅ 运行 |
-| CreepTick | ✅ 运行 | ❌ 跳过 | ❌ 跳过 |
-| SurroundTick | ❌ 跳过 | ✅ 运行 | ❌ 跳过 |
-| EscapeTick | ❌ 跳过 | ❌ 跳过 | ✅ 运行 |
+| 组件 | 默认(0) | Surround(1) | Escape(2) | Block(3) |
+|------|---------|------------|----------|----------|
+| Combat_AI 全军攻击 | ✅ 运行 | ❌ 截断 | ❌ 截断 | ❌ 截断 |
+| Combat_AI 英雄调度 | ✅ 运行 | ✅ 运行(Tick覆盖) | ✅ 运行(Tick覆盖) | ✅ 运行(Tick覆盖) |
+| Combat_AI 农民造塔 | ✅ 运行 | ✅ 运行 | ✅ 运行 | ✅ 运行 |
+| CreepTick | ✅ 运行 | ❌ 跳过 | ❌ 跳过 | ❌ 跳过 |
+| SurroundTick | ❌ 跳过 | ✅ 运行 | ❌ 跳过 | ❌ 跳过 |
+| EscapeTick | ❌ 跳过 | ❌ 跳过 | ✅ 运行 | ❌ 跳过 |
 
 **关键设计决策（V40 踩坑总结）**：
 
@@ -202,6 +204,66 @@ DK 移速 ~270 码/秒，0.3s tick 下每 tick 移动 ~81 码。
 | `build_train_devcloud.sh` | 9 步注入流水线入口 |
 | `_escape_grid.py` | 树木 grid 构建（从 .doo 读取） |
 
+## 卡位 AI（Body Block, V11）
+
+FS（先知）拦截 DK 移动路线，通过 S 形卡位持续阻碍目标移动。
+
+### 核心参数
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| blockDist | min(dist + 50, 250) | 卡位点距离目标前方的距离，250 上限防止追丢 |
+| 偏侧周期 | 3 tick (0.45s) | S 形左右交替频率 |
+| 偏侧幅度 | 30 单位 | 左右偏移距离 |
+| FAR 阈值 | 800 单位 | 超过此距离不操作，节省计算 |
+| Tick 间隔 | 0.15s | 6.67 Hz，高频精确控制 |
+
+### 游戏内命令
+
+| 命令 | 功能 |
+|------|------|
+| `-block` | 开/关 toggle，设置 Round1Mode=3（与 creep/surround/escape 互斥） |
+| `-record` | 开/关 CSV 日志记录（输出到 `save\\blk_log\\data_N.txt`） |
+| `-debug` | 全局 debug 开关，开启后每 tick 显示实时 dist/blockDist |
+
+### 数据采集与分析
+
+卡位调试流程：
+
+```
+1. 进入游戏 → -block 开启卡位 → -record 开启记录
+2. 跑图 → 结束（不需要 -noblock）
+3. 从 save/blk_log/ 取出 data_*.txt 文件
+4. 分析：python3 analyze_block_log.py save/blk_log/ <output_dir>/
+```
+
+### `analyze_block_log.py` 用法
+
+```bash
+python3 analyze_block_log.py <log_dir> [output_dir]
+```
+
+输出 6 面板 SVG + PNG：
+1. **Distance Over Time** — 距离线图 + avg/%<150 统计
+2. **Movement Trajectory** — DK(红) vs FS(蓝) 轨迹 + 卡位点(紫)
+3. **Distance Distribution** — 距离分布直方图（绿<100 / 橙100-200 / 红>200）
+4. **DK Facing** — 目标朝向变化
+5. **S-Turn Pattern** — 偏侧切换规律
+6. **Segment Stability** — 每 20 tick 平均距离柱状图
+
+顶部横幅显示：AvgD, L20, min/max, <150 占比, 时长, FAR→MOVE tick
+
+### 版本演进 (degrade)
+
+| 版本 | 日期 | 改动 | 效果 |
+|------|------|------|------|
+| V7 | 2026-07 | 初始版：blockDist=dist+50, 侧偏4t, 偏侧30 | avg=164, <150=65% |
+| V8/V8-fix | 2026-07 | facing预测 + HOLD + blockDist改公式 | ❌ 效果下降, avg=193 |
+| V8-fix3 | 2026-07 | V7逻辑 + GetPlayerController | avg=205, 玩家识别修复 |
+| V9 | 2026-07 | blockDist cap 250 + 侧偏3t | avg=166, <150=55-65%, ✅ 追平V7 |
+| V10 | 2026-07 | 侧偏幅度30→50 | avg=157, <150=63%, 无明显提升 |
+| V11 | 2026-07 | -block toggle + -record独立 + 去掉-noblock/-blockdebug + Round1Mode=3互斥 | 命令整合, 功能等价V9 |
+
 ## 文件结构
 
 ```
@@ -217,7 +279,8 @@ wc3-ai-pipeline/
   inject_ai_blademaster.py    ← 剑圣逃脱 BM Escape AI
   inject_debug.py             ← Debug命令（-debug）+ APM/性能监控
   _escape_grid.py             ← 从 war3map.doo 构建树木 O(1) grid
-  inject_ai_intercept.py      ← 卡位拦截（实验性，未纳入流水线）
+  inject_ai_body_block.py     ← 卡位 AI [V11]（-block toggle + -record log）
+  analyze_block_log.py        ← 卡位日志分析工具（SVG/PNG 6 面板图表）
   deprecated/                 ← 废弃脚本（仅供参考）
   tools/
     stormtool                 ← MPQ 解包
