@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""inject_ai_body_block.py V7-DEBUG
-V7卡位逻辑不变 + 每tick直接Preload注册 + 每5tick flush + 递增文件名"""
+"""inject_ai_body_block.py V6 - 先知沿DK行进方向同向跑+S形偏侧"""
 import sys
 
 def main():
@@ -25,17 +24,13 @@ def main():
         "    integer udg_blk_SideToggle = 0",
         "    integer udg_blk_TickCount  = 0",
         "    boolean udg_blk_DebugMode  = false",
-        "    // --- CSV log globals (DEBUG: no buffer, direct Preload) ---",
-        "    integer udg_blk_LogLine    = 0",
-        "    integer udg_blk_FlushCount = 0",
-        "    boolean udg_blk_LogOpen    = false",
     ]) + nl
     src = src.replace("endglobals", g + "endglobals")
     print("[BLK] globals ok")
 
     D = 'call DisplayTimedTextToForce(GetPlayersAll(), 5.00, '
 
-    funcs = nl + "// BODY BLOCK AI V7-DEBUG" + nl
+    funcs = nl + "// BODY BLOCK AI V6" + nl
 
     # FindBlocker
     funcs += "function Trig_BLK_FindBlocker takes nothing returns unit" + nl
@@ -73,34 +68,16 @@ def main():
     funcs += "    return best" + nl
     funcs += "endfunction" + nl + nl
 
-    # FlushLog — 关闭当前 Preload session + 写文件，然后重新打开
-    funcs += "function Trig_BLK_FlushLog takes nothing returns nothing" + nl
-    funcs += "    local string fname" + nl
-    funcs += '    set fname = "save\\\\blk_log\\\\data_" + I2S(udg_blk_FlushCount) + ".txt"' + nl
-    funcs += "    set udg_blk_FlushCount = udg_blk_FlushCount + 1" + nl
-    funcs += "    call PreloadGenEnd(fname)" + nl
-    funcs += "    call PreloadGenClear()" + nl
-    funcs += "    call PreloadGenStart()" + nl
-    funcs += "    set udg_blk_LogLine = 0" + nl
-    funcs += "endfunction" + nl + nl
-
-    # EnableAction — 打开日志
+    # EnableAction
     funcs += "function Trig_BLK_EnableAction takes nothing returns nothing" + nl
     funcs += "    set udg_blk_Enabled = true" + nl
-    funcs += "    set udg_blk_FlushCount = 0" + nl
-    funcs += "    set udg_blk_LogLine = 0" + nl
-    funcs += "    call PreloadGenClear()" + nl
-    funcs += "    call PreloadGenStart()" + nl
-    funcs += "    set udg_blk_LogOpen = true" + nl
-    funcs += "    " + D + '"[BLK] ON (V7-DEBUG)")' + nl
+    funcs += "    " + D + '"[BLK] ON")' + nl
     funcs += "endfunction" + nl + nl
 
-    # DisableAction — 最终flush
+    # DisableAction
     funcs += "function Trig_BLK_DisableAction takes nothing returns nothing" + nl
     funcs += "    set udg_blk_Enabled = false" + nl
-    funcs += "    call Trig_BLK_FlushLog()" + nl
-    funcs += "    set udg_blk_LogOpen = false" + nl
-    funcs += "    " + D + '"[BLK] OFF (files=" + I2S(udg_blk_FlushCount) + ")")' + nl
+    funcs += "    " + D + '"[BLK] OFF")' + nl
     funcs += "endfunction" + nl + nl
 
     # DebugAction
@@ -109,7 +86,7 @@ def main():
     funcs += "    " + D + '"[BLK] debug toggled")' + nl
     funcs += "endfunction" + nl + nl
 
-    # Tick — V7 核心逻辑不变 + 每tick直接Preload
+    # Tick — 核心逻辑：先知沿DK行进方向同向跑 + S形偏侧
     funcs += "function Trig_BLK_Tick takes nothing returns nothing" + nl
     funcs += "    local unit blocker" + nl
     funcs += "    local unit target" + nl
@@ -126,38 +103,28 @@ def main():
     funcs += "    local real blockY" + nl
     funcs += "    local real sideAngle" + nl
     funcs += "    local real offsetSign" + nl
-    funcs += "    local string csvLine" + nl
     funcs += "    if not udg_blk_Enabled then" + nl
     funcs += "        return" + nl
     funcs += "    endif" + nl
-    funcs += "    set udg_blk_TickCount = udg_blk_TickCount + 1" + nl
     funcs += "    set blocker = Trig_BLK_FindBlocker()" + nl
     funcs += "    set target = Trig_BLK_FindTarget()" + nl
     funcs += "    if blocker == null or target == null then" + nl
     funcs += "        return" + nl
     funcs += "    endif" + nl
+    # 位置和朝向
     funcs += "    set bx = GetUnitX(blocker)" + nl
     funcs += "    set by = GetUnitY(blocker)" + nl
     funcs += "    set tx = GetUnitX(target)" + nl
     funcs += "    set ty = GetUnitY(target)" + nl
-    funcs += "    set facing = GetUnitFacing(target)" + nl
+    funcs += "    set facing = GetUnitFacing(target) * bj_DEGTORAD" + nl
     funcs += "    set dx = bx - tx" + nl
     funcs += "    set dy = by - ty" + nl
     funcs += "    set dist = SquareRoot(dx * dx + dy * dy)" + nl
-    # V7 原版卡位逻辑
+    # 太远不卡
     funcs += "    if dist > 800.0 then" + nl
-    # FAR: 记录但不移动
-    funcs += '        set csvLine = I2S(udg_blk_TickCount) + "," + R2SW(bx,1,1) + "," + R2SW(by,1,1) + "," + R2SW(tx,1,1) + "," + R2SW(ty,1,1) + "," + R2SW(facing,1,1) + "," + R2SW(dist,1,1) + ",0,0,0,FAR"' + nl
-    funcs += '        call Preload(csvLine)' + nl
-    funcs += "        set udg_blk_LogLine = udg_blk_LogLine + 1" + nl
-    funcs += "        if udg_blk_LogLine >= 5 then" + nl
-    funcs += "            call Trig_BLK_FlushLog()" + nl
-    funcs += "        endif" + nl
-    funcs += "        set blocker = null" + nl
-    funcs += "        set target = null" + nl
     funcs += "        return" + nl
     funcs += "    endif" + nl
-    # S形偏侧 (V7: 4 tick 周期)
+    # S形偏侧切换
     funcs += "    set udg_blk_SideToggle = udg_blk_SideToggle + 1" + nl
     funcs += "    if udg_blk_SideToggle >= 4 then" + nl
     funcs += "        set udg_blk_SideToggle = 0" + nl
@@ -167,22 +134,17 @@ def main():
     funcs += "    else" + nl
     funcs += "        set offsetSign = -1.0" + nl
     funcs += "    endif" + nl
-    # V7 卡位点计算 (blockDist = dist + 50, side offset = 30)
+    # 卡位点：DK行进方向 dist+50 码 + 偏侧30码
+    # 关键：blockDist = dist + 50 → 卡位点始终在先知前方50码
+    # 先知会沿DK行进方向同向跑，不会停下来
     funcs += "    set blockDist = dist + 50.0" + nl
-    funcs += "    set sideAngle = facing * bj_DEGTORAD + offsetSign * 1.5708" + nl
-    funcs += "    set blockX = tx + Cos(facing * bj_DEGTORAD) * blockDist + Cos(sideAngle) * 30.0" + nl
-    funcs += "    set blockY = ty + Sin(facing * bj_DEGTORAD) * blockDist + Sin(sideAngle) * 30.0" + nl
+    funcs += "    set sideAngle = facing + offsetSign * 1.5708" + nl
+    funcs += "    set blockX = tx + Cos(facing) * blockDist + Cos(sideAngle) * 30.0" + nl
+    funcs += "    set blockY = ty + Sin(facing) * blockDist + Sin(sideAngle) * 30.0" + nl
     funcs += '    call IssuePointOrder(blocker, "move", blockX, blockY)' + nl
-    # CSV: 每 tick 直接 Preload，不拼 buffer
-    funcs += '    set csvLine = I2S(udg_blk_TickCount) + "," + R2SW(bx,1,1) + "," + R2SW(by,1,1) + "," + R2SW(tx,1,1) + "," + R2SW(ty,1,1) + "," + R2SW(facing,1,1) + "," + R2SW(dist,1,1) + "," + R2SW(blockX,1,1) + "," + R2SW(blockY,1,1) + "," + R2SW(offsetSign,1,0) + ",MOVE"' + nl
-    funcs += '    call Preload(csvLine)' + nl
-    funcs += "    set udg_blk_LogLine = udg_blk_LogLine + 1" + nl
-    funcs += "    if udg_blk_LogLine >= 5 then" + nl
-    funcs += "        call Trig_BLK_FlushLog()" + nl
-    funcs += "    endif" + nl
     # debug
     funcs += "    if udg_blk_DebugMode then" + nl
-    funcs += "        " + D + '"[BLK] d=" + R2SW(dist, 1, 0))' + nl
+    funcs += "        " + D + '"[BLK] d=" + R2SW(dist, 1, 0) + " bd=" + R2SW(blockDist, 1, 0))' + nl
     funcs += "    endif" + nl
     funcs += "    set blocker = null" + nl
     funcs += "    set target = null" + nl
@@ -205,7 +167,7 @@ def main():
     funcs += '    call TriggerRegisterPlayerChatEvent(tDebug, Player(0), "-blockdebug", true)' + nl
     funcs += '    call TriggerRegisterPlayerChatEvent(tDebug, Player(1), "-blockdebug", true)' + nl
     funcs += "    call TriggerAddAction(tDebug, function Trig_BLK_DebugAction)" + nl
-    funcs += "    " + D + '"[BLK] V7-DEBUG init")' + nl
+    funcs += "    " + D + '"[BLK] V6 init")' + nl
     funcs += "endfunction" + nl
 
     src = src.replace("function InitCustomTriggers", funcs + "function InitCustomTriggers")
@@ -219,7 +181,7 @@ def main():
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(src)
-    print("[BLK] V7-DEBUG done")
+    print("[BLK] V6 done")
 
 if __name__ == "__main__":
     main()
