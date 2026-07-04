@@ -600,3 +600,59 @@ function Trig_AIML_XxxToggle takes nothing returns nothing
 | 1 | 底座图用错 base-1.27 导致缺少模块 | 忘了底座是 origin-reforged | V43 早期 |
 | 2 | block 注入导致 creep 不出兵 | block toggle 直接设 Round1Mode | V43 fix |
 | 3 | blockdebug 没删除 | 代码清理不完整 | V12 |
+
+## 坑 22：TC 践踏 hook 失败的 N 种死法（2026-07-04 血泪总结）
+
+**发现时间**：2026-07-04
+
+**现象**：新底座图 UD-decisive-111（现 base-reforged.w3x）注入 TC 智能践踏后，TC 完全不踩地板，或者偶尔踩。调试了整整一天。
+
+### 死法 1：清空 Func008A 函数体（V2）
+
+**做法**：把 Func008A 函数体改为 `return`。
+**结果**：Combat_AI_Actions 的 `ForGroupBJ(..., Func008A)` 调用链还在，函数进去就 return，TC 永远不会踩。
+**为什么错**：破坏了调用链。正确做法是**替换函数体内容，保留函数名和调用链**。
+
+### 死法 2：在 Actions 末尾追加 dispatch 但不删除旧调用（V1）
+
+**做法**：在 Combat_AI_Actions 末尾追加 `ForGroupBJ(udg_Race1Player, Otch, Trig_AIML_TC_Stomp_Dispatch)`，但没有处理旧的 `Func008A` 调用。
+**结果**：TC 同时走两条路径——无脑 Func008A 仍然在踩，智能 Dispatch 也在跑，两套逻辑互相干扰。
+**为什么错**：追加不替换，旧的无脑逻辑仍然生效。
+
+### 死法 3：正则替换调用时破坏函数结构（V2-V3 尝试）
+
+**做法**：用 `src.replace(old_call, "")` 删除旧的 Func008A 调用行。
+**结果**：删除后 `endfunction` 和下一个函数挤在一起，pjass 报语法错误。
+**为什么错**：文本删除破坏了函数边界的换行结构。
+
+### 正确方案（V17c，来自 Box AI inject_hero_magic.py）：
+
+1. **不要动 Combat_AI_Actions 的调用链**
+2. **用正则匹配 Func008A 的函数定义**（`function Trig_ComputerXCombat_AI_Func008A takes nothing returns nothing` → `IssueImmediateOrderBJ(GetEnumUnit(), "stomp")`）
+3. **保留函数名，替换函数体**为 `call Trig_AIML_TC_Stomp_Logic(GetEnumUnit())`
+4. 注入新函数 `Trig_AIML_TC_Stomp_Logic`（智能践踏判断）到 endglobals 之后
+
+```jass
+// 替换后的 Func008A：
+function Trig_Computer1Combat_AI_Func008A takes nothing returns nothing
+    call Trig_AIML_TC_Stomp_Logic(GetEnumUnit())
+endfunction
+```
+
+### 关键原则
+
+- **hook ≠ wipe**：替换函数体内容，不是清空函数
+- **保留调用链**：Combat_AI_Actions 里的 `ForGroupBJ(..., Func008A)` 一行都不要动
+- **用 raw order ID**：`IssueImmediateOrderById(tc, 852127)` 而不是 `IssueImmediateOrder(tc, "stomp")`，字符串在不同版本可能有歧义
+- **底座图依赖**：必须是有 Func008A（无脑 `IssueImmediateOrderBJ(GetEnumUnit(), "stomp")`）的底座图。如果底座图没有这个函数（或被删），注入器会静默跳过，TC 不会踩
+
+### 验证方法
+
+build 日志必须看到：
+```
+[HERO-MAGIC] hooked stomp: Trig_Computer1Combat_AI_Func008A
+[HERO-MAGIC] hooked stomp: Trig_Computer2Combat_AI_Func008A
+```
+
+两个都出现才算成功。缺少任何一个都是底座图不匹配或正则没命中。
+

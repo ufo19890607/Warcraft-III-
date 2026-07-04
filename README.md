@@ -32,7 +32,8 @@ cd /data/ufo/Warcraft-III/wc3-ai-pipeline/
 |---|---|---|---|
 | 1 | 解包 war3map.j | — | — |
 | 2 | 远程齐射 | `inject_salvo.py` | — |
-| 3 | TC 战争践踏 + 暗影猎手（Hex/治疗波） | `inject_hero_magic.py` | — |
+| 3 | 暗影猎手（Hex/治疗波） | `inject_ai_shaman.py` | — |
+| 3.5 | TC 智能践踏 | `inject_ai_tc_stomp.py` | — |
 | 4 | 集火后撤保护 | `inject_ai_focus_retreat.py` | — |
 | 5 | 补刀 / 防补刀（Round 1） | `inject_ai_creep_control.py` | `-creep` |
 | 6 | 围杀（Round 1） | `inject_ai_surround.py` | `-surround` |
@@ -159,6 +160,61 @@ DK 移速 ~270 码/秒，0.3s tick 下每 tick 移动 ~81 码。
 - `'Oshd'`（暗影猎手）已从远程英雄白名单移除
 
 
+
+
+## TC 智能践踏设计（inject_ai_tc_stomp.py，V17c 验证方案）
+
+> ⚠️ **关键依赖**：底座图必须有无脑踩地板的 Func008A（即 `IssueImmediateOrderBJ(GetEnumUnit(), "stomp")`）。
+> 如果没有，注入器会静默跳过，TC 不会踩。判断标准：build 日志中必须看到两条 `hooked stomp`。
+
+### 设计原理：hook 函数体，不动调用链
+
+底座图母调度 `ComputerXCombat_AI_Actions` 中有一行：
+
+```
+call ForGroupBJ( GetUnitsOfPlayerAndTypeId(Player(0), 'Otch'), function Trig_Computer1Combat_AI_Func008A )
+```
+
+`Func008A` 原本是无脑践踏：
+
+```
+function Trig_Computer1Combat_AI_Func008A takes nothing returns nothing
+    call IssueImmediateOrderBJ( GetEnumUnit(), "stomp" )
+endfunction
+```
+
+注入器用正则匹配这个函数定义，保留函数名，只替换函数体：
+
+```
+function Trig_Computer1Combat_AI_Func008A takes nothing returns nothing
+    // [HERO-MAGIC] replaced dumb stomp with smart logic
+    call Trig_AIML_TC_Stomp_Logic(GetEnumUnit())
+endfunction
+```
+
+Combat_AI_Actions 的调用链完全不变。母调度不知道内容变了，实际执行的是智能判断。
+
+### 智能践踏判断逻辑
+
+1. 蓝量检查：< 100 → 跳过
+2. 250码内是否有敌方英雄 → 有则立刻 `IssueImmediateOrderById(tc, 852127)`
+3. 没有英雄 → 数 250 码内有效敌人（排除死亡/建筑/飞行/友方），>= StompMinEnemies(=2) 才踩
+4. 都不满足 → 不踩，等下次 tick（0.1s）
+
+### 关键设计决策
+
+- **用 raw order ID 852127 而不是字符串 "stomp"**：不同语言版本中 order string 可能不同，raw ID 全球统一
+- **hook 策略是替换函数体而不是清空函数**：清空 = return = TC 永不踩。多次犯过这个错误（见 DEGRADE 坑 22）
+- **TC + SH 分离**：`inject_ai_tc_stomp.py` 只处理 TC，暗影猎手由 `inject_ai_shaman.py` 独立处理，挂在同一个 `TICK_HERO_MAGIC` timer
+
+### build 验证
+
+出包后 build 日志必须出现：
+```
+[HERO-MAGIC] hooked stomp: Trig_Computer1Combat_AI_Func008A
+[HERO-MAGIC] hooked stomp: Trig_Computer2Combat_AI_Func008A
+```
+两个都出现才算注入成功。
 ## 剑圣 AI 详情（inject_ai_blademaster.py，V42 更新）
 
 > **核心突破（V39.21）**：所有攻击都先 `move` 靠近目标到 < 100 码，再 `UnitRemoveBuffs` 破隐 + `attack`。
