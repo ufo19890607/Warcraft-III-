@@ -26,7 +26,8 @@ SH_GLOBALS = """    // [SHAMAN] Shadow Hunter AI globals
     unit    udg_sh_HeroUnit1   = null
     unit    udg_sh_HeroUnit2   = null
     unit    udg_sh_HeroUnit3   = null
-    unit    udg_sh_HeroUnit4   = null"""
+    unit    udg_sh_HeroUnit4   = null
+    boolean udg_sh_HexAttempted = false"""
 
 SH_FUNCTIONS = """
 //===========================================================================
@@ -137,6 +138,22 @@ function Trig_AIML_SH_ActForUnit takes unit sh, player ownP, player enemyP retur
     if sh == null or IsUnitType(sh, UNIT_TYPE_DEAD) then
         return
     endif
+    // hex: check if previous hex attempt succeeded (buff appeared on DK)
+    if udg_sh_HexAttempted then
+        set udg_sh_HexAttempted = false
+        set g = CreateGroup()
+        call GroupEnumUnitsOfPlayer(g, enemyP, Condition(function Trig_AIML_SH_IsDK))
+        set dk = FirstOfGroup(g)
+        call DestroyGroup(g)
+        set g = null
+        if dk != null and not IsUnitType(dk, UNIT_TYPE_DEAD) then
+            // hex buff: Bpsd (hex/burrow cocoon variant), check if present
+            if GetUnitAbilityLevel(dk, 'Bpsd') > 0 then
+                call DisplayTimedTextToForce(GetPlayersAll(), 2.00, "|cffff00ff[SHAMAN] HEX landed on DK|r")
+            endif
+        endif
+        set dk = null
+    endif
     // hex: target enemy Death Knight 'Udea', cast if enough mana
     if GetUnitState(sh, UNIT_STATE_MANA) >= 75.0 then
         set g = CreateGroup()
@@ -146,7 +163,7 @@ function Trig_AIML_SH_ActForUnit takes unit sh, player ownP, player enemyP retur
         set g = null
         if dk != null and not IsUnitType(dk, UNIT_TYPE_DEAD) then
             call IssueTargetOrder(sh, "hex", dk)
-            call DisplayTimedTextToForce(GetPlayersAll(), 2.00, "|cffff00ff[SHAMAN] HEX on DK|r")
+            set udg_sh_HexAttempted = true
             set dk = null
             return
         endif
@@ -157,7 +174,6 @@ function Trig_AIML_SH_ActForUnit takes unit sh, player ownP, player enemyP retur
     if healTgt != null then
         if GetUnitState(sh, UNIT_STATE_MANA) >= 65.0 then
             call IssueTargetOrder(sh, "healingwave", healTgt)
-            call DisplayTimedTextToForce(GetPlayersAll(), 2.00, "|cff00ff00[SHAMAN] HEALING WAVE|r")
         endif
     endif
     set healTgt = null
