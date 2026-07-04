@@ -252,9 +252,7 @@ function Trig_AIML_KodoRetreatForPlayer takes player myP, player enemyP, group r
                     elseif IsUnitHidden(target) then
                         // TARGET IS HIDDEN — devour landed! Start retreating
                         call GroupAddUnit(retGroup, kodo)
-                        if udg_aiml_DebugMode then
                         call DisplayTextToForce(GetPlayersAll(), "|cff00ffcc[KODO] 吞噬成功 -> " + Trig_AIML_KodoTypeName(GetUnitTypeId(target)) + "，后撤中|r")
-                        endif
                         set target = null
                     else
                         // Target still visible — re-issue devour if kodo is not walking to target
@@ -275,9 +273,7 @@ function Trig_AIML_KodoRetreatForPlayer takes player myP, player enemyP, group r
                             else
                                 set udg_KodoTarget2[kodoIdx] = target
                             endif
-                            if udg_aiml_DebugMode then
                             call DisplayTextToForce(GetPlayersAll(), "|cff00ffcc[KODO] 吞噬 -> " + Trig_AIML_KodoTypeName(GetUnitTypeId(target)) + "|r")
-                            endif
                         endif
                     endif
                 endif
