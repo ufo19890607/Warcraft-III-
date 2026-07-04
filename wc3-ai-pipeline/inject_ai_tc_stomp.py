@@ -84,14 +84,14 @@ function Trig_AIML_TC_Stomp_Logic takes unit tc returns nothing
     endif
     call GroupClear(g)
     if heroNear then
-        call IssueImmediateOrder(tc, "stomp")
+        call IssueImmediateOrderById(tc, 852127)
         call DestroyGroup(g)
         return
     endif
     call GroupEnumUnitsInRange(g, cx, cy, udg_aiml_StompRadius, Filter(function Trig_AIML_IsValidStompTarget))
     set count = CountUnitsInGroup(g)
     if count >= udg_aiml_StompMinEnemies then
-        call IssueImmediateOrder(tc, "stomp")
+        call IssueImmediateOrderById(tc, 852127)
     endif
     call DestroyGroup(g)
 endfunction
