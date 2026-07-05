@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """
-inject_creep_control.py V39 - Inject Last-Hit & Anti-Steal Creep Control.
+inject_creep_control.py V46 - Dynamic Burst Last-Hit Creep Control.
 
-V39 vs V35:
-  - CreepScanRadius: 700 -> 2000
-  - Step4 (HP 120-200): DK dist > 1600 -> AllIn; DK dist <= 1600 -> SurroundCB (encircle);
-    No DK -> AllIn
-  - New CreepSurroundCB: non-hero non-elemental units encircle creep
-  - AllInCB/ApproachCB: skip locked/retreating units (UserData==1 or 2), skip ewsp
-  - CreepFindEnemyDK: visibility check included
-  - DK harass (hmil/hfoo lock) only when armyCount > 8
-  - Round1 only for Player(1) (computer)
-  - SalvoTick: Player(1) creep only; Round1Mode surround guard preserved
-  - Computer2Combat_AI guard: CreepMode>=1 blocks default combat dispatch in Round1
+V46 vs V39:
+  - Dynamic burst threshold: scan enemy units within 150yd of creep,
+    compute burst_max from unit composition (DK=33, dog=13, skel=15 for heavy armor)
+  - 4-state FSM: FARMING(0) / APPROACH(1) / FAKE(2) / ALL_IN(3)
+  - Approach: move hero close to creep, stop attacking
+  - Fake attack: hero feint attack animation to bait player, then cancel
+  - All-in: all units attack creep when HP <= burst_max * 1.15
+  - State boundaries: FARM > 212, APPROACH [threshold+40, 212],
+    FAKE (threshold, threshold+40], ALL_IN <= threshold
 """
 
 import sys
@@ -33,18 +31,31 @@ def main():
     # ------------------------------------------------------------------ #
     # 1) Globals
     # ------------------------------------------------------------------ #
-    CREEP_GLOBALS = """    // [CREEP V39] Last-Hit & Anti-Steal Control globals
+    CREEP_GLOBALS = """    // [CREEP V46] Dynamic Burst Last-Hit Control globals
     boolean udg_aiml_CreepControlEnabled = true
-    real    udg_aiml_CreepLastHitHP = 120.00
-    real    udg_aiml_CreepApproachHP = 200.00
     real    udg_aiml_CreepScanRadius = 2000.00
-    real    udg_aiml_CreepHeroAtkRange = 600.00
     integer udg_aiml_CreepMode = 0
     unit    udg_aiml_CreepTarget = null
     real    udg_aiml_CreepTargetHP = 0.00
     real    udg_aiml_CreepMapTopY = 6000.00
     real    udg_aiml_CreepMapBotY = -6000.00
-    real    udg_aiml_CreepLowHPThreshold = 100.00"""
+    real    udg_aiml_CreepLowHPThreshold = 100.00
+    // [V46] Legacy compat: renamed to avoid breaking other injectors
+    real    udg_aiml_CreepApproachHP = 212.00
+    real    udg_aiml_CreepLastHitHP = 120.00
+    // [V46] Dynamic burst damage constants (heavy armor, 1 def)
+    real    udg_aiml_DK_Burst_Max = 33.00
+    real    udg_aiml_Dog_Burst_Max = 13.00
+    real    udg_aiml_Skel_Burst_Max = 15.00
+    real    udg_aiml_BurstScanRadius = 150.00
+    real    udg_aiml_ApproachUpper = 212.00
+    real    udg_aiml_FakeWindow = 40.00
+    real    udg_aiml_FakeChance = 0.30
+    real    udg_aiml_CreepThreshold = 132.00
+    // [V46] Feint state
+    boolean udg_aiml_FeintActive = false
+    real    udg_aiml_FeintX = 0.00
+    real    udg_aiml_FeintY = 0.00"""
 
     marker = "boolean udg_aiml_DebugMode"
     idx = src.find(marker)
@@ -59,15 +70,15 @@ def main():
         sys.exit(1)
     eol = src.index(nl, idx)
     src = src[:eol + len(nl)] + CREEP_GLOBALS + nl + src[eol + len(nl):]
-    print("[V39] inserted creep globals")
+    print("[V46] inserted dynamic burst creep globals")
 
     # ------------------------------------------------------------------ #
-    # 2) Functions (inserted before SalvoTick)
+    # 2) Functions
     # ------------------------------------------------------------------ #
     CREEP_FUNCTIONS = r"""
 // ================================================================
-// [CREEP V39] Last-Hit & Anti-Steal Control
-// Only for Player(1) (computer), only in Round 1.
+// [CREEP V46] Dynamic Burst Last-Hit Control
+// 4-state FSM: FARMING(0) / APPROACH(1) / FAKE(2) / ALL_IN(3)
 // ================================================================
 
 // Filter: neutral aggressive creep units
@@ -170,7 +181,55 @@ function Trig_AIML_CreepCountArmy takes player p returns integer
     return n
 endfunction
 
-// ALL-IN callback: all non-locked non-retreating units attack creep
+// ================================================================
+// [V46] Scan enemy melee units within radius of creep target.
+// Counts dogs (ugho), DK (Udea), skeletons (uske).
+// Returns total burst_max for heavy armor.
+// ================================================================
+function Trig_AIML_ScanBurstMax takes unit creep, player enemy returns real
+    local group g = CreateGroup()
+    local unit u
+    local real cx = GetUnitX(creep)
+    local real cy = GetUnitY(creep)
+    local integer dogCount = 0
+    local boolean dkPresent = false
+    local integer skelCount = 0
+    local real burst = 0.0
+    local integer tid
+    local real dist
+    call GroupEnumUnitsOfPlayer(g, enemy, null)
+    set u = FirstOfGroup(g)
+    loop
+        exitwhen u == null
+        if not IsUnitType(u, UNIT_TYPE_DEAD) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) then
+            set dist = Trig_AIML_CreepDist(cx, cy, GetUnitX(u), GetUnitY(u))
+            if dist <= udg_aiml_BurstScanRadius then
+                set tid = GetUnitTypeId(u)
+                if tid == 'ugho' then
+                    set dogCount = dogCount + 1
+                elseif tid == 'Udea' then
+                    set dkPresent = true
+                elseif tid == 'uske' then
+                    set skelCount = skelCount + 1
+                endif
+            endif
+        endif
+        call GroupRemoveUnit(g, u)
+        set u = FirstOfGroup(g)
+    endloop
+    call DestroyGroup(g)
+    set g = null
+    if dkPresent then
+        set burst = burst + udg_aiml_DK_Burst_Max
+    endif
+    set burst = burst + I2R(dogCount) * udg_aiml_Dog_Burst_Max
+    set burst = burst + I2R(skelCount) * udg_aiml_Skel_Burst_Max
+    return burst
+endfunction
+
+// ================================================================
+// [V46] ALL-IN callback: all non-locked non-retreating units attack creep
+// ================================================================
 function Trig_AIML_CreepAllInCB takes nothing returns nothing
     local unit u = GetEnumUnit()
     if u == null then
@@ -196,17 +255,20 @@ function Trig_AIML_CreepAllInCB takes nothing returns nothing
     set u = null
 endfunction
 
-// SURROUND-CREEP callback: non-hero non-elemental units encircle creep
-// Used when DK is close (<=1600). Heroes and water elementals attack freely.
-function Trig_AIML_CreepSurroundCB takes nothing returns nothing
+// ================================================================
+// [V46] APPROACH callback: hero moves close to creep, stops attacking.
+// Other non-hero units also stop to avoid pushing creep HP too fast.
+// ================================================================
+function Trig_AIML_CreepApproachCB takes nothing returns nothing
     local unit u = GetEnumUnit()
-    local real ux
-    local real uy
     local real tx
     local real ty
+    local real ux
+    local real uy
     local real dx
     local real dy
     local real dist
+    local real ang
     if u == null then
         return
     endif
@@ -214,17 +276,6 @@ function Trig_AIML_CreepSurroundCB takes nothing returns nothing
         set u = null
         return
     endif
-    // Heroes attack freely
-    if IsUnitType(u, UNIT_TYPE_HERO) then
-        set u = null
-        return
-    endif
-    // Water elemental attacks freely
-    if GetUnitTypeId(u) == 'ewsp' then
-        set u = null
-        return
-    endif
-    // Locked to DK or retreating: skip
     if GetUnitUserData(u) == 1 or GetUnitUserData(u) == 2 then
         set u = null
         return
@@ -233,18 +284,69 @@ function Trig_AIML_CreepSurroundCB takes nothing returns nothing
         set u = null
         return
     endif
-    set ux = GetUnitX(u)
-    set uy = GetUnitY(u)
     set tx = GetUnitX(udg_aiml_CreepTarget)
     set ty = GetUnitY(udg_aiml_CreepTarget)
+    set ux = GetUnitX(u)
+    set uy = GetUnitY(u)
     set dx = ux - tx
     set dy = uy - ty
     set dist = SquareRoot(dx * dx + dy * dy)
     if dist < 10.0 then
         set dist = 10.0
     endif
-    call IssuePointOrder(u, "move", tx - (dx / dist) * 200.0, ty - (dy / dist) * 200.0)
+    if IsUnitType(u, UNIT_TYPE_HERO) then
+        // Hero: move to 80-120 yd range of creep (close enough for instant hit)
+        if dist > 120.0 then
+            call IssuePointOrder(u, "move", tx - (dx / dist) * 100.0, ty - (dy / dist) * 100.0)
+        else
+            // Already close enough; stop to avoid attacking
+            call IssueImmediateOrder(u, "stop")
+        endif
+    else
+        // Non-hero: stop attacking, stay near creep
+        call IssueImmediateOrder(u, "stop")
+    endif
     set u = null
+endfunction
+
+// ================================================================
+// [V46] FAKE-ATTACK callback: hero feints attack on creep then cancels.
+// Feint: attack -> 0.12s -> stop, to bait player into rushing.
+// ================================================================
+function Trig_AIML_CreepFakeAttack takes unit hero, unit creep returns nothing
+    local real roll
+    if hero == null or creep == null then
+        return
+    endif
+    if IsUnitType(hero, UNIT_TYPE_DEAD) then
+        return
+    endif
+    if udg_aiml_FeintActive then
+        return
+    endif
+    set roll = GetRandomReal(0.0, 1.0)
+    if roll <= udg_aiml_FakeChance then
+        call IssueTargetOrder(hero, "attack", creep)
+        set udg_aiml_FeintActive = true
+        set udg_aiml_FeintX = GetUnitX(hero)
+        set udg_aiml_FeintY = GetUnitY(hero)
+    endif
+endfunction
+
+// ================================================================
+// [V46] Creep feint cancel: called separately to cancel feint after
+// a short delay (via a sub-tick timer or next tick check).
+// ================================================================
+function Trig_AIML_CreepFeintCancel takes unit hero returns nothing
+    if hero == null then
+        set udg_aiml_FeintActive = false
+        return
+    endif
+    if not udg_aiml_FeintActive then
+        return
+    endif
+    call IssueImmediateOrder(hero, "stop")
+    set udg_aiml_FeintActive = false
 endfunction
 
 // LOW-HP RETREAT callback
@@ -291,7 +393,11 @@ function Trig_AIML_LowHPRetreatCB takes nothing returns nothing
 endfunction
 
 // ================================================================
-// [CREEP V39] Main tick — Player(1) only, Round 1 only.
+// [CREEP V46] Main tick — 4-state dynamic burst FSM
+//   Mode 0: FARMING  - normal combat (> approach_upper)
+//   Mode 1: APPROACH - move hero close, stop attacking
+//   Mode 2: FAKE     - feint attack to bait player
+//   Mode 3: ALL_IN   - everyone attack creep, secure last hit
 // ================================================================
 function Trig_AIML_CreepControlForPlayer takes player owner, player enemy returns boolean
     local unit hero
@@ -299,13 +405,15 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
     local real cy
     local unit creep
     local real creepHP
+    local real burstMax
+    local real threshold
+    local real fakeUpper
     local group armyG
     local integer armyCount
     local unit dk
     local group harassG
     local unit u
     local integer assigned
-    local real dkDist
     local boolean dkVisible
 
     // Only for computer player
@@ -375,8 +483,13 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
         endif
     endif
 
-    // --- Step 2: Scan for low HP creep ---
-    set creep = Trig_AIML_CreepFindLowHP(cx, cy, udg_aiml_CreepScanRadius, udg_aiml_CreepApproachHP)
+    // --- Step 2: Cancel active feint from previous tick ---
+    if udg_aiml_FeintActive then
+        call Trig_AIML_CreepFeintCancel(hero)
+    endif
+
+    // --- Step 3: Scan for low HP creep ---
+    set creep = Trig_AIML_CreepFindLowHP(cx, cy, udg_aiml_CreepScanRadius, udg_aiml_ApproachUpper)
     if creep == null then
         set udg_aiml_CreepMode = 0
         set udg_aiml_CreepTarget = null
@@ -388,56 +501,44 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
     set udg_aiml_CreepTarget = creep
     set udg_aiml_CreepTargetHP = creepHP
 
-    // --- Step 3: HP < 120 = ALL-IN ---
-    if creepHP < udg_aiml_CreepLastHitHP then
+    // --- Step 4: Scan enemy melee units near creep, compute dynamic threshold ---
+    set burstMax = Trig_AIML_ScanBurstMax(creep, enemy)
+    set threshold = burstMax * 1.15
+    set fakeUpper = threshold + udg_aiml_FakeWindow
+    set udg_aiml_CreepThreshold = threshold
+
+    // --- Step 5: 4-state FSM ---
+    if creepHP <= threshold then
+        // ----- MODE 3: ALL-IN -----
         set udg_aiml_CreepMode = 3
         set armyG = GetUnitsOfPlayerAll(owner)
         call ForGroup(armyG, function Trig_AIML_CreepAllInCB)
         call DestroyGroup(armyG)
         set armyG = null
         if udg_aiml_DebugMode then
-            call DisplayTextToForce(GetPlayersAll(), "[CREEP] ALL-IN HP=" + I2S(R2I(creepHP)))
+            call DisplayTextToForce(GetPlayersAll(), "[CREEP] ALL-IN HP=" + I2S(R2I(creepHP)) + " threshold=" + I2S(R2I(threshold)) + " burst=" + I2S(R2I(burstMax)))
         endif
         set hero = null
         return true
-    endif
-
-    // --- Step 4: HP 120-200 = DK distance check ---
-    set udg_aiml_CreepMode = 1
-
-    if dk != null then
-        set dkDist = Trig_AIML_CreepDist(GetUnitX(creep), GetUnitY(creep), GetUnitX(dk), GetUnitY(dk))
-        if dkDist > 1600.0 then
-            // DK far: all units attack creep freely
-            set armyG = GetUnitsOfPlayerAll(owner)
-            call ForGroup(armyG, function Trig_AIML_CreepAllInCB)
-            call DestroyGroup(armyG)
-            set armyG = null
-            if udg_aiml_DebugMode then
-                call DisplayTextToForce(GetPlayersAll(), "[CREEP] DK_FAR ALLIN HP=" + I2S(R2I(creepHP)))
-            endif
-            set hero = null
-            return true
-        else
-            // DK close: non-hero non-elemental encircle; heroes+elemental attack freely
-            set armyG = GetUnitsOfPlayerAll(owner)
-            call ForGroup(armyG, function Trig_AIML_CreepSurroundCB)
-            call DestroyGroup(armyG)
-            set armyG = null
-            if udg_aiml_DebugMode then
-                call DisplayTextToForce(GetPlayersAll(), "[CREEP] DK_CLOSE SURROUND HP=" + I2S(R2I(creepHP)))
-            endif
-            set hero = null
-            return true
+    elseif creepHP <= fakeUpper then
+        // ----- MODE 2: FAKE ATTACK -----
+        set udg_aiml_CreepMode = 2
+        // Trigger feint attack (stochastic, ~30% per tick)
+        call Trig_AIML_CreepFakeAttack(hero, creep)
+        if udg_aiml_DebugMode then
+            call DisplayTextToForce(GetPlayersAll(), "[CREEP] FAKE HP=" + I2S(R2I(creepHP)) + " threshold=" + I2S(R2I(threshold)))
         endif
+        set hero = null
+        return true
     else
-        // No DK: all units attack creep freely
+        // ----- MODE 1: APPROACH (creepHP <= approach_upper, but > fake_upper) -----
+        set udg_aiml_CreepMode = 1
         set armyG = GetUnitsOfPlayerAll(owner)
-        call ForGroup(armyG, function Trig_AIML_CreepAllInCB)
+        call ForGroup(armyG, function Trig_AIML_CreepApproachCB)
         call DestroyGroup(armyG)
         set armyG = null
         if udg_aiml_DebugMode then
-            call DisplayTextToForce(GetPlayersAll(), "[CREEP] NO_DK_ATK HP=" + I2S(R2I(creepHP)))
+            call DisplayTextToForce(GetPlayersAll(), "[CREEP] APPROACH HP=" + I2S(R2I(creepHP)) + " threshold=" + I2S(R2I(threshold)))
         endif
         set hero = null
         return true
@@ -452,10 +553,11 @@ endfunction
         print("ERROR: cannot find Trig_AIML_SalvoTick")
         sys.exit(1)
     src = src[:idx2] + CREEP_FUNCTIONS.replace("\n", nl) + src[idx2:]
-    print("[V39] inserted creep functions")
+    print("[V46] inserted dynamic burst creep functions")
+
     # Insert CreepTick + CreepTimerInit (independent timer)
     CREEP_TIMER_FUNCS = (
-        nl + "// [CREEP V39] Independent creep control timer" + nl
+        nl + "// [CREEP V46] Independent creep control timer" + nl
         + "function Trig_AIML_CreepTick takes nothing returns nothing" + nl
         + "    if udg_RoundNo == 1 and udg_aiml_Round1Mode >= 1 then" + nl
         + "        return" + nl
@@ -474,11 +576,10 @@ endfunction
     idx_st = src.find(stm)
     if idx_st != -1:
         src = src[:idx_st] + CREEP_TIMER_FUNCS + src[idx_st:]
-        print("[V39] inserted CreepTick + CreepTimerInit")
-
+        print("[V46] inserted CreepTick + CreepTimerInit")
 
     # ------------------------------------------------------------------ #
-    # 3) Rewrite SalvoTick to include Round1 creep+surround guard
+    # 3) Rewrite SalvoTick
     # ------------------------------------------------------------------ #
     NEW_SALVO_TICK = """function Trig_AIML_SalvoTick takes nothing returns nothing
     // [FOCUS] Focus retreat only for computer-controlled players, Round 2+
@@ -494,7 +595,6 @@ endfunction
         call Trig_AIML_SalvoForPlayer(Player(0), Player(1), 1)
     endif
     if GetPlayerController(Player(1)) == MAP_CONTROL_COMPUTER then
-        // [V40] salvo always runs; creep mode and salvo are independent
         call Trig_AIML_SalvoForPlayer(Player(1), Player(0), 2)
     endif
 endfunction"""
@@ -505,18 +605,11 @@ endfunction"""
         sys.exit(1)
     end_idx = src.find("endfunction", start + 10) + len("endfunction")
     src = src[:start] + NEW_SALVO_TICK.replace("\n", nl) + src[end_idx:]
-    print("[V39] rewrote SalvoTick")
+    print("[V46] rewrote SalvoTick")
 
     # ------------------------------------------------------------------ #
     # 4) Guard Computer2Combat_AI_Actions in Round1
     # ------------------------------------------------------------------ #
-    # [V40] Selective Combat_AI guard: only block "all army attack" orders
-    # (the 2 GroupPointOrderLocBJ lines at top of Actions).
-    # Hero dispatch, peasant tower building, and unit orders still run.
-    # Mode ticks (surround/escape) override hero orders at higher frequency.
-    #
-    # [V42] Exclude kodo beasts from Combat_AI army-attack so our devour AI has full control
-    # Patch the filter functions used by GetUnitsOfPlayerMatching in the 2 GroupPointOrderLocBJ lines
     kodo_exclude1 = "function Trig_Computer1Combat_AI_Func001001002 takes nothing returns boolean"
     kodo_exclude2 = "function Trig_Computer2Combat_AI_Func002001002 takes nothing returns boolean"
     if kodo_exclude1 in src:
@@ -537,13 +630,10 @@ endfunction"""
     c1_gpo1 = 'call GroupPointOrderLocBJ( GetUnitsOfPlayerMatching(Player(0), Condition(function Trig_Computer1Combat_AI_Func001001002)), "attack",'
     c1_gpo2 = 'call GroupPointOrderLocBJ( GetUnitsInRectOfPlayer(gg_rct_P1Start, Player(0)), "attack",'
     if c1_marker in src and c1_gpo1 in src and c1_gpo2 in src:
-        # Find the function body start
         c1_start = src.find(c1_marker)
-        c1_body_start = src.find(nl, c1_start) + len(nl)  # first line after function header
-        # Find the end of the 2nd GroupPointOrderLocBJ line
+        c1_body_start = src.find(nl, c1_start) + len(nl)
         c1_gpo2_idx = src.find(c1_gpo2, c1_start)
         c1_gpo2_end = src.find(")" + nl, c1_gpo2_idx) + len(")" + nl)
-        # Wrap the 2 lines in a guard
         original_lines = src[c1_body_start:c1_gpo2_end]
         guarded = ("    // [V40] Skip army-attack in surround/escape mode" + nl
                    + "    if not (udg_RoundNo == 1 and udg_aiml_Round1Mode >= 1) then" + nl
@@ -590,11 +680,9 @@ endfunction"""
     )
     if RESET_MARKER in src:
         src = src.replace(RESET_MARKER, RESET_INJECT, 1)
-        print("[V39] injected round-start state reset into Variable Reset")
+        print("[V46] injected round-start state reset into Variable Reset")
     else:
         print("WARN: Variable Reset marker not found, skipping state reset injection")
-
-    # Computer1Combat_AI selective guard done above.
 
     # ------------------------------------------------------------------ #
     # 5) Disable original neutral-attack triggers
@@ -610,8 +698,7 @@ endfunction"""
             new_lines.append(line)
     src = nl.join(new_lines)
     if disabled:
-        print(f"[V39] disabled {disabled} original neutral-attack triggers")
-
+        print(f"[V46] disabled {disabled} original neutral-attack triggers")
 
     # Hook CreepTimerInit into main()
     si_call = "call Trig_AIML_SalvoInit()"
@@ -619,11 +706,11 @@ endfunction"""
     if idx_si != -1 and "call Trig_AIML_CreepTimerInit()" not in src:
         eol_si = src.index(nl, idx_si)
         src = src[:eol_si + len(nl)] + "    call Trig_AIML_CreepTimerInit()" + nl + src[eol_si + len(nl):]
-        print("[V39] hooked CreepTimerInit into main()")
+        print("[V46] hooked CreepTimerInit into main()")
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(src)
-    print(f"[V39] Creep control injected into {path}")
+    print(f"[V46] Dynamic burst creep control injected into {path}")
 
 
 if __name__ == "__main__":
