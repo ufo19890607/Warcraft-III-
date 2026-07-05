@@ -48,7 +48,7 @@ def main():
     real    udg_aiml_Dog_Burst_Max = 13.00
     real    udg_aiml_Skel_Burst_Max = 15.00
     real    udg_aiml_BurstScanRadius = 150.00
-    real    udg_aiml_ApproachUpper = 212.00
+    real    udg_aiml_ApproachUpper = 250.00
     real    udg_aiml_FakeWindow = 40.00
     real    udg_aiml_FakeChance = 0.30
     real    udg_aiml_CreepThreshold = 132.00
@@ -187,48 +187,77 @@ endfunction
 // Returns total burst_max for heavy armor.
 // ================================================================
 function Trig_AIML_ScanBurstMax takes unit creep, player enemy returns real
-    local group g = CreateGroup()
+    local group g
     local unit u
     local real cx = GetUnitX(creep)
     local real cy = GetUnitY(creep)
     local integer dogCount = 0
-    local boolean dkPresent = false
+    local integer dkCount = 0
     local integer skelCount = 0
     local real burst = 0.0
-    local integer tid
-    local real dist
-    call GroupEnumUnitsOfPlayer(g, enemy, null)
+    // Scan by type: GetUnitsOfPlayerAndTypeId does NOT require visibility
+    // Dogs: ugho (standard) + u006 (custom)
+    set g = GetUnitsOfPlayerAndTypeId(enemy, 'ugho')
     set u = FirstOfGroup(g)
     loop
         exitwhen u == null
-        if not IsUnitType(u, UNIT_TYPE_DEAD) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) then
-            set dist = Trig_AIML_CreepDist(cx, cy, GetUnitX(u), GetUnitY(u))
-            if dist <= udg_aiml_BurstScanRadius then
-                set tid = GetUnitTypeId(u)
-                if tid == 'ugho' then
-                    set dogCount = dogCount + 1
-                elseif tid == 'Udea' then
-                    set dkPresent = true
-                elseif tid == 'uske' then
-                    set skelCount = skelCount + 1
-                endif
-            endif
+        if not IsUnitType(u, UNIT_TYPE_DEAD) and IsUnitInRange(u, creep, udg_aiml_BurstScanRadius) then
+            set dogCount = dogCount + 1
+        endif
+        call GroupRemoveUnit(g, u)
+        set u = FirstOfGroup(g)
+    endloop
+    call DestroyGroup(g)
+    set g = GetUnitsOfPlayerAndTypeId(enemy, 'u006')
+    set u = FirstOfGroup(g)
+    loop
+        exitwhen u == null
+        if not IsUnitType(u, UNIT_TYPE_DEAD) and IsUnitInRange(u, creep, udg_aiml_BurstScanRadius) then
+            set dogCount = dogCount + 1
+        endif
+        call GroupRemoveUnit(g, u)
+        set u = FirstOfGroup(g)
+    endloop
+    call DestroyGroup(g)
+    // DK
+    set g = GetUnitsOfPlayerAndTypeId(enemy, 'Udea')
+    set u = FirstOfGroup(g)
+    loop
+        exitwhen u == null
+        if not IsUnitType(u, UNIT_TYPE_DEAD) and IsUnitInRange(u, creep, udg_aiml_BurstScanRadius) then
+            set dkCount = dkCount + 1
+        endif
+        call GroupRemoveUnit(g, u)
+        set u = FirstOfGroup(g)
+    endloop
+    call DestroyGroup(g)
+    // Skeletons
+    set g = GetUnitsOfPlayerAndTypeId(enemy, 'uske')
+    set u = FirstOfGroup(g)
+    loop
+        exitwhen u == null
+        if not IsUnitType(u, UNIT_TYPE_DEAD) and IsUnitInRange(u, creep, udg_aiml_BurstScanRadius) then
+            set skelCount = skelCount + 1
         endif
         call GroupRemoveUnit(g, u)
         set u = FirstOfGroup(g)
     endloop
     call DestroyGroup(g)
     set g = null
-    if dkPresent then
+    if dkCount > 0 then
         set burst = burst + udg_aiml_DK_Burst_Max
     endif
     set burst = burst + I2R(dogCount) * udg_aiml_Dog_Burst_Max
     set burst = burst + I2R(skelCount) * udg_aiml_Skel_Burst_Max
+    if udg_aiml_DebugMode then
+        call DisplayTextToForce(GetPlayersAll(), "[CREEP] scan DK=" + I2S(dkCount) + " dog=" + I2S(dogCount) + " skel=" + I2S(skelCount) + " burst=" + I2S(R2I(burst)))
+    endif
     return burst
 endfunction
 
 // ================================================================
-// [V46] ALL-IN callback: all non-locked non-retreating units attack creep
+// [V46] ALL-IN callback: HERO ONLY attacks creep.
+// Wolves and grunts continue free-attacking for player pressure.
 // ================================================================
 function Trig_AIML_CreepAllInCB takes nothing returns nothing
     local unit u = GetEnumUnit()
@@ -239,7 +268,7 @@ function Trig_AIML_CreepAllInCB takes nothing returns nothing
         set u = null
         return
     endif
-    if IsUnitType(u, UNIT_TYPE_STRUCTURE) then
+    if not IsUnitType(u, UNIT_TYPE_HERO) then
         set u = null
         return
     endif
@@ -251,13 +280,13 @@ function Trig_AIML_CreepAllInCB takes nothing returns nothing
         set u = null
         return
     endif
-    call IssueTargetOrder(u, "smart", udg_aiml_CreepTarget)
+    call IssueTargetOrder(u, "attack", udg_aiml_CreepTarget)
     set u = null
 endfunction
 
 // ================================================================
-// [V46] APPROACH callback: hero moves close to creep, stops attacking.
-// Other non-hero units also stop to avoid pushing creep HP too fast.
+// [V46] APPROACH callback: HERO ONLY moves close & stops.
+// Wolves and grunts continue free-attacking for player pressure.
 // ================================================================
 function Trig_AIML_CreepApproachCB takes nothing returns nothing
     local unit u = GetEnumUnit()
@@ -268,11 +297,14 @@ function Trig_AIML_CreepApproachCB takes nothing returns nothing
     local real dx
     local real dy
     local real dist
-    local real ang
     if u == null then
         return
     endif
-    if IsUnitType(u, UNIT_TYPE_DEAD) or IsUnitType(u, UNIT_TYPE_STRUCTURE) then
+    if IsUnitType(u, UNIT_TYPE_DEAD) then
+        set u = null
+        return
+    endif
+    if not IsUnitType(u, UNIT_TYPE_HERO) then
         set u = null
         return
     endif
@@ -294,17 +326,11 @@ function Trig_AIML_CreepApproachCB takes nothing returns nothing
     if dist < 10.0 then
         set dist = 10.0
     endif
-    if IsUnitType(u, UNIT_TYPE_HERO) then
-        // Hero: move to 80-120 yd range of creep (close enough for instant hit)
-        if dist > 120.0 then
-            call IssuePointOrder(u, "move", tx - (dx / dist) * 100.0, ty - (dy / dist) * 100.0)
-        else
-            // Already close enough; stop to avoid attacking
-            call IssueImmediateOrder(u, "stop")
-        endif
+    if dist > 200.0 then
+        call IssuePointOrder(u, "move", tx - (dx / dist) * 200.0, ty - (dy / dist) * 200.0)
     else
-        // Non-hero: stop attacking, stay near creep
-        call IssueImmediateOrder(u, "stop")
+        // Within 200yd: free attack (hit DK/dogs, keep pressure)
+        // Do NOT issue order — let hero auto-acquire targets freely
     endif
     set u = null
 endfunction
@@ -491,19 +517,47 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
     // --- Step 3: Scan for low HP creep ---
     set creep = Trig_AIML_CreepFindLowHP(cx, cy, udg_aiml_CreepScanRadius, udg_aiml_ApproachUpper)
     if creep == null then
+        // [V46] FARMING: no creep below 250 HP nearby
         set udg_aiml_CreepMode = 0
         set udg_aiml_CreepTarget = null
+        // Attack DK only if DK is within 1000 yd of ANY creep (DK is near the fight)
+        // If DK fled far away (>1000 yd), don't chase — focus on creep instead
+        if dk != null and not IsUnitType(dk, UNIT_TYPE_DEAD) then
+            set creep = Trig_AIML_CreepFindLowHP(cx, cy, udg_aiml_CreepScanRadius, 99999.0)
+            if creep != null and Trig_AIML_CreepDist(GetUnitX(dk), GetUnitY(dk), GetUnitX(creep), GetUnitY(creep)) <= 1000.0 then
+                call IssueTargetOrder(hero, "attack", dk)
+            endif
+        endif
         set hero = null
+        set dk = null
+        set creep = null
         return false
     endif
 
     set creepHP = GetUnitState(creep, UNIT_STATE_LIFE)
+    // If creep is already dead (or dying), skip and clear target
+    if creepHP <= 0.5 or IsUnitType(creep, UNIT_TYPE_DEAD) then
+        set udg_aiml_CreepMode = 0
+        set udg_aiml_CreepTarget = null
+        set hero = null
+        set creep = null
+        return false
+    endif
     set udg_aiml_CreepTarget = creep
     set udg_aiml_CreepTargetHP = creepHP
 
     // --- Step 4: Scan enemy melee units near creep, compute dynamic threshold ---
     set burstMax = Trig_AIML_ScanBurstMax(creep, enemy)
     set threshold = burstMax * 1.15
+    // [V46] DK death-coil guard: if creep is NOT magic-immune AND DK has >= 75 mana,
+    // use flat threshold 125 to beat the 100-damage coil (1s cast + travel time).
+    if not IsUnitType(creep, UNIT_TYPE_MAGIC_IMMUNE) then
+        if dk != null and not IsUnitType(dk, UNIT_TYPE_DEAD) then
+            if GetUnitState(dk, UNIT_STATE_MANA) >= 75.0 then
+                set threshold = 125.0
+            endif
+        endif
+    endif
     set fakeUpper = threshold + udg_aiml_FakeWindow
     set udg_aiml_CreepThreshold = threshold
 
@@ -523,6 +577,11 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
     elseif creepHP <= fakeUpper then
         // ----- MODE 2: FAKE ATTACK -----
         set udg_aiml_CreepMode = 2
+        // Stop all units first (prevent Combat_AI from overriding)
+        set armyG = GetUnitsOfPlayerAll(owner)
+        call ForGroup(armyG, function Trig_AIML_CreepApproachCB)
+        call DestroyGroup(armyG)
+        set armyG = null
         // Trigger feint attack (stochastic, ~30% per tick)
         call Trig_AIML_CreepFakeAttack(hero, creep)
         if udg_aiml_DebugMode then
@@ -658,6 +717,14 @@ endfunction"""
                     + "    endif" + nl)
         src = src[:c2_body_start] + guarded2 + src[c2_gpo2_end:]
         print("[V40] patched Computer2Combat_AI: selective guard on army-attack")
+
+    # [V46] Exclude Ofar (Farseer) from Combat_AI dispatch in Round1
+    # so CreepTick fully controls hero behavior without Combat_AI override
+    ofar_line = "call ForGroupBJ( GetUnitsOfPlayerAndTypeId(Player(1), 'Ofar'), function Trig_Computer2Combat_AI_Func004A )"
+    if ofar_line in src:
+        ofar_guarded = "    // [V46] Exclude Far Seer from Combat_AI in Round1" + nl + "    if udg_RoundNo != 1 then" + nl + "    " + ofar_line + nl + "    endif"
+        src = src.replace(ofar_line, ofar_guarded, 1)
+        print("[V46] excluded Ofar from Computer2Combat_AI dispatch in Round1")
 
     # 4c) Inject round-start state reset into Variable Reset block
     RESET_MARKER = "// Variable Reset"
