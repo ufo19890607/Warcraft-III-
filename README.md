@@ -3,13 +3,13 @@
 
 ![项目架构总览](docs/architecture.png)
 
-## 当前基线版本：V46
+## 当前基线版本：V47
 
-V46 引入动态补刀系统——用实测爆发伤害代替硬编码 HP=120 阈值，4 状态机（FARMING/APPROACH/FAKE/ALL-IN）控制补刀节奏。
+V47 引入动态补刀系统——用实测爆发伤害代替硬编码 HP=120 阈值，4 状态机（FARMING/APPROACH/FAKE/ALL-IN）控制补刀节奏。
 
 - **防围杀逃跑（Escape）**：先知/英雄被围时自动选方向逃跑，避树避障，树旁不停止
 - **围杀（Surround）**：DK 围杀微操
-- **动态补刀（V46 Creep）**：扫描野怪周围敌方近战单位，动态计算补刀阈值
+- **动态补刀（V47 Creep）**：扫描野怪周围敌方近战单位，动态计算补刀阈值
 - **剑圣 AI（BM）**：疾风步突进 + 智能猎杀残血英雄
 - **远程齐射 + 集火后撤**：远程单位集火 + TC 践踏
 - **三种 Round 1 模式互斥切换**：`-escape` / `-surround` / `-creep`
@@ -45,7 +45,7 @@ cd /data/ufo/Warcraft-III/wc3-ai-pipeline/
 | 9 | pjass 语法检查 + 打包 | — | — |
 
 
-## V46 动态补刀系统（2026-07-06）
+## V47 动态补刀系统（2026-07-07）
 
 ### 核心思路
 
@@ -75,13 +75,25 @@ threshold = burst_max * 1.15
 |------|------|------|------|
 | FARMING | HP > 250 | DK 在野怪 1000yd 内 attack DK；否则自由打 | 自由打 |
 | APPROACH | threshold+40 < HP <= 250 | 走到野怪 200yd，到位后自由攻击 | 自由打 |
-| FAKE | threshold < HP <= threshold+40 | stop + 假动作(30%/tick) + 走位 | 自由打 |
-| ALL-IN | HP <= threshold | attack 补刀收割，0.3s re-issue | 自由打 |
+| FAKE | 50 < HP <= threshold+40 | stop + 100%假动作/tick + 走位 | 自由打 |
+| ALL-IN | HP <= min(threshold, 50) | attack 补刀收割，0.3s re-issue | 自由打 |
 
-### DK 死亡缠绕守卫
+### V47 关键改进
 
-- 野怪魔免（如 OvU/NvU 的 n005/n006）正常动态阈值
-- 野怪非魔免 + DK 蓝 >= 75 阈值强制 = 125（防 C 100 伤害抢怪）
+#### ALL-IN 魔免硬上限 50
+- **魔免野怪**（n005/n006 等）：ALL-IN = min(burst_max * 1.15, 50)
+  - 先知普攻仅 30-40 伤害，过早 ALL-IN (125 HP) 是白打
+  - 50 HP 以下才出手，保证英雄一套普攻吃完
+- **非魔免野怪**：ALL-IN = burst_max * 1.15，DK coil guard 125 正常生效
+
+#### FAKE 假动作 100%
+- 每 tick 必然执行假A+取消，不再 30% 随机
+- 效果：英雄持续在野怪旁做攻击前摇，逼玩家先出刀
+- 移除 FakeChance 全局变量
+
+#### DK 死亡缠绕守卫
+- 野怪魔免 → 正常动态阈值（不受 125 coil guard 影响）
+- 野怪非魔免 + DK 蓝 ≥ 75 → 阈值强制 = 125（防 C 100 伤害抢怪）
 
 ### 配套改动
 
