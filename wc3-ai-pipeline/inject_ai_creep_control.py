@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """
-inject_creep_control.py V46 - Dynamic Burst Last-Hit Creep Control.
+inject_creep_control.py V47 - Dynamic Burst Last-Hit Creep Control.
 
-V46 vs V39:
-  - Dynamic burst threshold: scan enemy units within 150yd of creep,
-    compute burst_max from unit composition (DK=33, dog=13, skel=15 for heavy armor)
-  - 4-state FSM: FARMING(0) / APPROACH(1) / FAKE(2) / ALL_IN(3)
-  - Approach: move hero close to creep, stop attacking
-  - Fake attack: hero feint attack animation to bait player, then cancel
-  - All-in: all units attack creep when HP <= burst_max * 1.15
-  - State boundaries: FARM > 212, APPROACH [threshold+40, 212],
-    FAKE (threshold, threshold+40], ALL_IN <= threshold
+V47 changes (vs V46):
+  - ALL-IN hard cap: max(threshold, creepHP) capped at 50 for magic-immune creeps
+    (hero auto-attack ~30-40 dmg, 125 HP was too early to secure last-hit)
+  - FAKE mode: 100% feint probability per tick (was 30%), removes FakeChance global
+  - FAKE window extended: creepHP > 50 up to threshold+40 (was threshold to threshold+40)
+  - State boundaries: FARM > 250, APPROACH (threshold+40, 250],
+    FAKE (50, threshold+40], ALL_IN <= min(threshold, 50)
 """
-
 import sys
 from ai_config import TICK_CREEP_CONTROL
 
@@ -40,7 +37,7 @@ def main():
     real    udg_aiml_CreepMapTopY = 6000.00
     real    udg_aiml_CreepMapBotY = -6000.00
     real    udg_aiml_CreepLowHPThreshold = 100.00
-    // [V46] Legacy compat: renamed to avoid breaking other injectors
+    // [V47] All-in capped at 50.0
     real    udg_aiml_CreepApproachHP = 212.00
     real    udg_aiml_CreepLastHitHP = 120.00
     // [V46] Dynamic burst damage constants (heavy armor, 1 def)
@@ -50,9 +47,8 @@ def main():
     real    udg_aiml_BurstScanRadius = 150.00
     real    udg_aiml_ApproachUpper = 250.00
     real    udg_aiml_FakeWindow = 40.00
-    real    udg_aiml_FakeChance = 0.30
     real    udg_aiml_CreepThreshold = 132.00
-    // [V46] Feint state
+    // [V47] Feint state (100% probability)
     boolean udg_aiml_FeintActive = false
     real    udg_aiml_FeintX = 0.00
     real    udg_aiml_FeintY = 0.00"""
@@ -336,27 +332,22 @@ function Trig_AIML_CreepApproachCB takes nothing returns nothing
 endfunction
 
 // ================================================================
-// [V46] FAKE-ATTACK callback: hero feints attack on creep then cancels.
-// Feint: attack -> 0.12s -> stop, to bait player into rushing.
+// [V47] FAKE-ATTACK callback: hero ALWAYS feints attack on creep then cancels.
+// 100% probability per tick: attack -> next-tick stop, continuous bait loop.
 // ================================================================
 function Trig_AIML_CreepFakeAttack takes unit hero, unit creep returns nothing
-    local real roll
     if hero == null or creep == null then
         return
     endif
     if IsUnitType(hero, UNIT_TYPE_DEAD) then
         return
     endif
-    if udg_aiml_FeintActive then
-        return
-    endif
-    set roll = GetRandomReal(0.0, 1.0)
-    if roll <= udg_aiml_FakeChance then
-        call IssueTargetOrder(hero, "attack", creep)
-        set udg_aiml_FeintActive = true
-        set udg_aiml_FeintX = GetUnitX(hero)
-        set udg_aiml_FeintY = GetUnitY(hero)
-    endif
+    // [V47] Always feint: 100% probability, every tick.
+    // Previous feint is canceled at tick start, so always re-issue.
+    call IssueTargetOrder(hero, "attack", creep)
+    set udg_aiml_FeintActive = true
+    set udg_aiml_FeintX = GetUnitX(hero)
+    set udg_aiml_FeintY = GetUnitY(hero)
 endfunction
 
 // ================================================================
@@ -422,8 +413,8 @@ endfunction
 // [CREEP V46] Main tick — 4-state dynamic burst FSM
 //   Mode 0: FARMING  - normal combat (> approach_upper)
 //   Mode 1: APPROACH - move hero close, stop attacking
-//   Mode 2: FAKE     - feint attack to bait player
-//   Mode 3: ALL_IN   - everyone attack creep, secure last hit
+//   Mode 2: FAKE     - 100% feint attack every tick to bait player
+//   Mode 3: ALL_IN   - hero attack creep, capped at min(threshold, 50)
 // ================================================================
 function Trig_AIML_CreepControlForPlayer takes player owner, player enemy returns boolean
     local unit hero
@@ -562,7 +553,9 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
     set udg_aiml_CreepThreshold = threshold
 
     // --- Step 5: 4-state FSM ---
-    if creepHP <= threshold then
+    // [V47] ALL-IN: magic-immune creeps capped at 50 (hero AA ~30-40 dmg),
+    // non-immune creeps use full threshold (DK coil guard 125 works).
+    if creepHP <= threshold and (creepHP <= 50.0 or not IsUnitType(creep, UNIT_TYPE_MAGIC_IMMUNE)) then
         // ----- MODE 3: ALL-IN -----
         set udg_aiml_CreepMode = 3
         set armyG = GetUnitsOfPlayerAll(owner)
@@ -574,6 +567,7 @@ function Trig_AIML_CreepControlForPlayer takes player owner, player enemy return
         endif
         set hero = null
         return true
+    // [V47] FAKE covers [50.0, fakeUpper] when threshold > 50, else [threshold, fakeUpper]
     elseif creepHP <= fakeUpper then
         // ----- MODE 2: FAKE ATTACK -----
         set udg_aiml_CreepMode = 2
