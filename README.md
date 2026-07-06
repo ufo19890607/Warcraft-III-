@@ -3,13 +3,13 @@
 
 ![项目架构总览](docs/architecture.png)
 
-## 当前基线版本：V44
+## 当前基线版本：V46
 
-V40 是经过大量实战验证的稳定基线，主要特性：
+V46 引入动态补刀系统——用实测爆发伤害代替硬编码 HP=120 阈值，4 状态机（FARMING/APPROACH/FAKE/ALL-IN）控制补刀节奏。
 
 - **防围杀逃跑（Escape）**：先知/英雄被围时自动选方向逃跑，避树避障，树旁不停止
 - **围杀（Surround）**：DK 围杀微操
-- **补刀（Creep）**：自动补刀低血量野怪
+- **动态补刀（V46 Creep）**：扫描野怪周围敌方近战单位，动态计算补刀阈值
 - **剑圣 AI（BM）**：疾风步突进 + 智能猎杀残血英雄
 - **远程齐射 + 集火后撤**：远程单位集火 + TC 践踏
 - **三种 Round 1 模式互斥切换**：`-escape` / `-surround` / `-creep`
@@ -44,6 +44,54 @@ cd /data/ufo/Warcraft-III/wc3-ai-pipeline/
 | 11 | 卡位（Body Block, Round 1） | `inject_ai_body_block.py` | `-block` |
 | 9 | pjass 语法检查 + 打包 | — | — |
 
+
+## V46 动态补刀系统（2026-07-06）
+
+### 核心思路
+
+不再写死 HP=120 阈值，改为**动态扫描野怪周围敌方近战单位，按实测爆发伤害计算补刀阈值**。
+
+### 实测伤害数据（重甲，1 甲食人魔）
+
+| 单位 | 面板攻击 | 实测区间 | 取上限 |
+|------|:------:|:------:|:---:|
+| DK (Udea) | 25-35 | 24~33 | 33 |
+| 食尸鬼 (u006/ugho) | 12-14 | 11~13 | 13 |
+| 骷髅 (uske) | 14-15 | 13~15 | 15 |
+
+### 扫描方式
+
+GetUnitsOfPlayerAndTypeId 按类型分别枚举（不依赖视野），IsUnitInRange(150yd) 过滤。
+自定义食尸鬼 u006 已加入白名单。
+
+### 阈值计算
+
+burst_max = dk*33 + dog*13 + skel*15
+threshold = burst_max * 1.15
+
+### 4 状态机（0.3s tick）
+
+| 状态 | 条件 | 先知行为 | 狼/大G |
+|------|------|------|------|
+| FARMING | HP > 250 | DK 在野怪 1000yd 内 attack DK；否则自由打 | 自由打 |
+| APPROACH | threshold+40 < HP <= 250 | 走到野怪 200yd，到位后自由攻击 | 自由打 |
+| FAKE | threshold < HP <= threshold+40 | stop + 假动作(30%/tick) + 走位 | 自由打 |
+| ALL-IN | HP <= threshold | attack 补刀收割，0.3s re-issue | 自由打 |
+
+### DK 死亡缠绕守卫
+
+- 野怪魔免（如 OvU/NvU 的 n005/n006）正常动态阈值
+- 野怪非魔免 + DK 蓝 >= 75 阈值强制 = 125（防 C 100 伤害抢怪）
+
+### 配套改动
+
+- Round1 排除先知 (Ofar) 从 Combat_AI dispatch
+- AllInCB/ApproachCB 只处理英雄
+- 野怪死后跳过后续 scan
+- Debug: CREEP scan DK=N dog=N skel=N burst=N
+
+
+## V46 动态补刀系统（2026-07-06）\n\n### 核心思路\n\n不再写死 HP=120 阈值，改为**动态扫描野怪周围敌方近战单位，按实测爆发伤害计算补刀阈值**。\n\n### 实测伤害数据（重甲，1 甲食人魔）\n\n| 单位 | 面板攻击 | 实测区间 | 取上限 |\n|------|:------:|:------:|:---:|\n| DK (Udea) | 25-35 | 24~33 | **33** |\n| 食尸鬼 (u006/ugho) | 12-14 | 11~13 | **13** |\n| 骷髅 (uske) | 14-15 | 13~15 | **15** |\n\n### 扫描方式\n\n 按类型分别枚举（不依赖视野）， 过滤。\n自定义食尸鬼  已加入白名单。\n\n### 阈值计算\n\n\n\n### 4 状态机（0.3s tick）\n\n| 状态 | 条件 | 先知行为 | 狼/大G |\n|------|------|------|------|\n| **FARMING** | HP > 250 | DK 在野怪 1000yd 内 → attack DK；否则自由打 | 自由打 |\n| **APPROACH** | threshold+40 < HP ≤ 250 | 走到野怪 200yd，到位后自由攻击 | 自由打 |\n| **FAKE** | threshold < HP ≤ threshold+40 | stop + 假动作(30%/tick) + 走位 | 自由打 |\n| **ALL-IN** | HP ≤ threshold | attack 补刀收割，0.3s re-issue | 自由打 |\n\n### DK 死亡缠绕守卫\n\n- 野怪魔免（如 OvU/NvU 的 n005/n006）→ 正常动态阈值\n- 野怪非魔免 + DK 蓝 ≥ 75 → 阈值强制 = 125（防 C 100 伤害抢怪）\n\n### 配套改动\n\n- Round1 排除先知 (Ofar) 从 Combat_AI dispatch\n- AllInCB/ApproachCB 只处理英雄\n- 野怪死后跳过后续 scan\n- Debug: \n\n
 ## Round 1 模式体系（V40 核心设计）
 
 三种模式**互斥**，通过聊天命令切换，`Round1Mode` 变量控制：
