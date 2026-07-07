@@ -3,7 +3,19 @@
 
 ![项目架构总览](docs/architecture.png)
 
-## 当前基线版本：V47
+## 当前基线版本：V48
+
+V48 引入剑圣 EXECUTE 斩杀模式 + DebugMode 打印收敛。
+
+### V48 剑圣 EXECUTE (2026-07-08)
+
+- **EXECUTE 斩杀**: 敌方英雄 HP < 150 时，BM 无视 EVADE/HUNT 冷却，强制疾风步 DASH 斩杀
+- **DebugMode 打印节流**: 所有 [BM] 打印仅在 -debug 模式下输出，EXECUTE 打印节流至 1 秒一次
+- **攻击目标优先级配置化**: aiml_target_priority.py 驱动 BM HUNT 目标优先级
+- **兵种 ID 对照表**: 新增 docs/wc3-unit-ids.md + docs/CustomKeys.txt
+- **修复毁灭者 unit ID**: uaod -> ubsp (CustomKeys.txt 确认)
+
+
 
 V47 引入动态补刀系统——用实测爆发伤害代替硬编码 HP=120 阈值，4 状态机（FARMING/APPROACH/FAKE/ALL-IN）控制补刀节奏。
 
