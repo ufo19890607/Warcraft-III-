@@ -45,6 +45,7 @@ BM_GLOBALS = """
     unit    udg_bm_Target1    = null
     integer udg_bm_HuntCooldown1 = 0    // HUNT冷却计时(tick数,0=可触发)
     integer udg_bm_EvadeCooldown1 = 0   // EVADE冷却(tick数,0=可触发)
+    integer udg_bm_ExecuteTimer1 = 0   // [V48] EXECUTE打印节流(tick)
 """
 
 BM_FUNCTIONS = """
@@ -260,6 +261,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     local integer state
     local integer safeTicks
     local integer waitTick
+    local real hp
     local boolean ww
     set bm = Trig_AIML_BM_FindBM(myP)
     if bm == null or IsUnitDeadBJ(bm) then
@@ -291,7 +293,9 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         if target == null or IsUnitDeadBJ(target) then
             set target = Trig_AIML_BM_FindNearestEnemy(bm, enemyP)
             if target == null then
+                if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] DASH target lost, no enemy -> NORMAL|r")
+                endif
                 set udg_bm_State1 = 0
                 set udg_bm_SafeTicks1 = 0
                 set udg_bm_Target1 = null
@@ -305,7 +309,9 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             if dist < 100.0 then
                 call UnitRemoveBuffs(bm, true, false)
                 call IssueTargetOrder(bm, "attack", target)
+                if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] DASH target lost -> STRIKE nearest " + GetUnitName(target) + " (d=" + I2S(R2I(dist)) + ")|r")
+                endif
                 set udg_bm_State1 = 0
                 set udg_bm_SafeTicks1 = -10
                 set udg_bm_Target1 = null
@@ -321,7 +327,9 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         if dist < 100.0 then
             call UnitRemoveBuffs(bm, true, false)
             call IssueTargetOrder(bm, "attack", target)
+            if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] DASH reached (d=" + I2S(R2I(dist)) + ") -> STRIKE " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
+            endif
             // 进入持续输出状态，咬住目标打
             set udg_bm_State1 = 3
             set udg_bm_SafeTicks1 = 0
@@ -338,7 +346,9 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         set target = udg_bm_Target1
         // [V41] 退出条件1：目标死亡
         if target == null or IsUnitDeadBJ(target) then
+            if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] STRIKE done (target dead) -> NORMAL|r")
+            endif
             set udg_bm_State1 = 0
             set udg_bm_SafeTicks1 = -10
             set udg_bm_Target1 = null
@@ -347,7 +357,9 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         endif
         // [V41] 退出条件2：HP < 25% -> 撤退保命
         if curHp < maxHp * 0.25 then
+            if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "|cffff4444[BM] STRIKE abort (hp=" + I2S(R2I(curHp)) + " < 25%) -> WAIT|r")
+            endif
             set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
             call Trig_AIML_BM_UpdateRetreat(bm, enemyHero)
             set udg_bm_State1 = 1
@@ -369,7 +381,9 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         set waitTick = waitTick + 1
         set udg_bm_WaitTick1 = waitTick
         if waitTick == 1 then
+            if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "|cff88ccff[BM] WAIT start hp=" + I2S(R2I(curHp)) + "/" + I2S(R2I(maxHp)) + "|r")
+            endif
         endif
         if waitTick <= 3 then
             call IssuePointOrder(bm, "smart", udg_bm_RetreatX1, udg_bm_RetreatY1)
@@ -387,14 +401,18 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             set target = Trig_AIML_BM_FindHuntTarget(bm, enemyP)
             if GetUnitAbilityLevel(bm, 'Boro') > 0 and target != null then
                 // 疾风步还在 -> DASH突进
+                if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] WAIT->DASH (Boro on) target=" + GetUnitName(target) + "|r")
+                endif
                 set udg_bm_State1 = 2
                 set udg_bm_SafeTicks1 = 0
                 set udg_bm_Target1 = target
                 call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
             else
                 // 疾风步没了 -> 平A
+                if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] WAIT->ATTACK (no Boro)|r")
+                endif
                 if target != null then
                     call IssueTargetOrder(bm, "attack", target)
                 endif
@@ -418,11 +436,52 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
 
     // ── NORMAL (safeTicks>=0) ──
 
+    // [V48] ⓪ EXECUTE: 敌方英雄HP<150 -> 无脑斩杀 (无视冷却/威胁)
+    set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
+    if target != null then
+        set hp = GetUnitState(target, UNIT_STATE_LIFE)
+        if hp < 150.0 then
+            set udg_bm_ExecuteTimer1 = udg_bm_ExecuteTimer1 + 1
+            if udg_aiml_DebugMode and udg_bm_ExecuteTimer1 >= 10 then
+                call DisplayTextToForce(GetPlayersAll(), "|cffff0000[BM] EXECUTE! " + GetUnitName(target) + " hp=" + I2S(R2I(hp)) + "|r")
+                set udg_bm_ExecuteTimer1 = 0
+            endif
+            set dx = GetUnitX(target) - GetUnitX(bm)
+            set dy = GetUnitY(target) - GetUnitY(bm)
+            set dist = SquareRoot(dx * dx + dy * dy)
+            if dist < 100.0 then
+                call IssueTargetOrder(bm, "attack", target)
+                set udg_bm_State1 = 3
+                set udg_bm_SafeTicks1 = 0
+                set udg_bm_Target1 = target
+            else
+                // 斩杀无视冷却，强制释放疾风步
+                set ww = IssueImmediateOrder(bm, "windwalk")
+                if ww then
+                    if udg_aiml_DebugMode then
+                    call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM] EXECUTE windwalk -> DASH|r")
+                    endif
+                    set udg_bm_State1 = 2
+                    set udg_bm_SafeTicks1 = 0
+                    set udg_bm_Target1 = target
+                else
+                    // 疾风步CD -> 直接跑过去平A
+                    call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
+                    set udg_bm_EvadeCooldown1 = 0
+                endif
+            endif
+            set bm = null
+            return
+        endif
+    endif
+
     // ① EVADE: 被集火 (V41: 0.5s window + cooldown)
     if udg_bm_EvadeCooldown1 > 0 then
         set udg_bm_EvadeCooldown1 = udg_bm_EvadeCooldown1 - 1
     elseif drop >= maxHp * 0.15 then
+        if udg_aiml_DebugMode then
         call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] EVADE! hp=" + I2S(R2I(curHp)) + "/" + I2S(R2I(maxHp)) + " drop=" + I2S(R2I(drop)) + "|r")
+        endif
         set ww = IssueImmediateOrder(bm, "windwalk")
         if ww then
             set udg_bm_EvadeCooldown1 = 50  // [V41] 5s EVADE cooldown after using windwalk
@@ -450,14 +509,18 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     else
         set target = Trig_AIML_BM_FindHuntTarget(bm, enemyP)
         if target != null then
+            if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT! target=" + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
+            endif
             set udg_bm_HuntCooldown1 = 300  // 重置30s冷却
             // 先判距离：已在100码内则直接进STRIKE平A，节省疾风步CD
             set dx = GetUnitX(target) - GetUnitX(bm)
             set dy = GetUnitY(target) - GetUnitY(bm)
             set dist = SquareRoot(dx * dx + dy * dy)
             if dist < 100.0 then
+                if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] HUNT close (d=" + I2S(R2I(dist)) + ") -> STRIKE directly|r")
+                endif
                 call IssueTargetOrder(bm, "attack", target)
                 set udg_bm_State1 = 3
                 set udg_bm_SafeTicks1 = 0
@@ -466,7 +529,9 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
                 // 距离>=100 -> 释放疾风步突进
                 set ww = IssueImmediateOrder(bm, "windwalk")
                 if ww then
+                    if udg_aiml_DebugMode then
                     call DisplayTextToForce(GetPlayersAll(), "|cff00ff00[BM] windwalk OK -> DASH|r")
+                    endif
                     set udg_bm_EvadeCooldown1 = 50  // [V41] 5s EVADE cooldown after HUNT windwalk
                     set udg_bm_State1 = 2
                     set udg_bm_SafeTicks1 = 0
@@ -583,6 +648,7 @@ def main():
             f"    set udg_bm_WaitTick1 = 0{nl}"
             f"    set udg_bm_PrevHp1 = 0.0{nl}"
             f"    set udg_bm_Target1 = null{nl}"
+            f"    set udg_bm_ExecuteTimer1 = 0{nl}"
             f"    set udg_bm_HuntCooldown1 = 0{nl}"
         )
         src = src[:eol + len(nl)] + reset_code + src[eol + len(nl):]
