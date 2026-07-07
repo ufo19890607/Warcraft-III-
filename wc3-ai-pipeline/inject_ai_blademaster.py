@@ -137,11 +137,11 @@ function Trig_AIML_BM_FindHuntTarget takes unit bm, player enemyP returns unit
     local real d2
     local unit heroTarget = null
     local real heroHp = 999999.0
-    local unit priTarget_2 = null  // 毁灭者
-    local unit priTarget_3 = null  // 黑曜石雕像
-    local unit priTarget_4 = null  // 女妖
-    local unit priTarget_5 = null  // 蜘蛛
-    local unit priTarget_6 = null  // 食尸鬼
+    local unit priTarget_2 = null  // 毁灭者 (Destroyer)
+    local unit priTarget_3 = null  // 黑曜石雕像 (Obsidian Statue)
+    local unit priTarget_4 = null  // 女妖 (Banshee)
+    local unit priTarget_5 = null  // 穴居恶魔/蜘蛛 (Crypt Fiend)
+    local unit priTarget_6 = null  // 食尸鬼 (Ghoul)
     local integer uid
     local real hp
     call GroupEnumUnitsOfPlayer(g, enemyP, null)
@@ -160,7 +160,7 @@ function Trig_AIML_BM_FindHuntTarget takes unit bm, player enemyP returns unit
                     set heroTarget = u
                 endif
             endif
-            // ②~⑥ 普通单位: 800码内
+            //   ②~6 普通单位: 毁灭者(ubsp)  黑曜石雕像(uobs)  女妖(uban)  穴居恶魔/蜘蛛(ucry)  食尸鬼(ugho)    (②~6: 800码内)
             if d2 < 640000.0 then
                 set uid = GetUnitTypeId(u)
                 if uid == 'ubsp' and priTarget_2 == null then
@@ -180,7 +180,7 @@ function Trig_AIML_BM_FindHuntTarget takes unit bm, player enemyP returns unit
     endloop
     call DestroyGroup(g)
     set g = null
-    // 按优先级返回
+    // 按优先级返回 (from aiml_target_priority.py)
     if heroTarget != null then
         return heroTarget
     endif
@@ -196,9 +196,11 @@ function Trig_AIML_BM_FindHuntTarget takes unit bm, player enemyP returns unit
     if priTarget_5 != null then
         return priTarget_5
     endif
-    return priTarget_6
+    if priTarget_6 != null then
+        return priTarget_6
+    endif
+    return null
 endfunction
-
 function Trig_AIML_BM_FindEnemyHero takes player enemyP returns unit
     local group g = CreateGroup()
     local unit u
