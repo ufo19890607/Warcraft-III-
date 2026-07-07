@@ -124,7 +124,7 @@ endfunction
 
 // HUNT目标选择（按优先级）:
 //   ① 残血英雄(HP<300, 2000码内)
-//   ② 毁灭者'uaod'  ③ 黑曜石雕像'uobs'  ④ 女妖'uban'
+//   ② 毁灭者'ubsp'  ③ 黑曜石雕像'uobs'  ④ 女妖'uban'
 //   ⑤ 蜘蛛'ucry'   ⑥ 食尸鬼'ugho'      (②~⑥: 800码内)
 // 返回目标unit，无目标返回null
 function Trig_AIML_BM_FindHuntTarget takes unit bm, player enemyP returns unit
@@ -163,7 +163,7 @@ function Trig_AIML_BM_FindHuntTarget takes unit bm, player enemyP returns unit
             // ②~⑥ 普通单位: 800码内
             if d2 < 640000.0 then
                 set uid = GetUnitTypeId(u)
-                if uid == 'uaod' and priTarget_2 == null then
+                if uid == 'ubsp' and priTarget_2 == null then
                     set priTarget_2 = u
                 elseif uid == 'uobs' and priTarget_3 == null then
                     set priTarget_3 = u
