@@ -485,6 +485,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         set ww = IssueImmediateOrder(bm, "windwalk")
         if ww then
             set udg_bm_EvadeCooldown1 = 50  // [V41] 5s EVADE cooldown after using windwalk
+            set udg_bm_Target1 = null  // [V49] clear target on retreat so Salvo stops following
             set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
             call Trig_AIML_BM_UpdateRetreat(bm, enemyHero)
             set udg_bm_State1 = 1
@@ -544,6 +545,18 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             endif
             set bm = null
             return
+        endif
+    endif
+
+    // [V49] NORMAL fallback: follow Salvo focus target, else attack lowest HP hero
+    if udg_aiml_FocusTarget1 != null and not IsUnitDeadBJ(udg_aiml_FocusTarget1) and GetOwningPlayer(udg_aiml_FocusTarget1) == enemyP then
+        set udg_bm_Target1 = udg_aiml_FocusTarget1
+        call IssueTargetOrder(bm, "attack", udg_aiml_FocusTarget1)
+    else
+        set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
+        if target != null then
+            set udg_bm_Target1 = target
+            call IssueTargetOrder(bm, "attack", target)
         endif
     endif
 

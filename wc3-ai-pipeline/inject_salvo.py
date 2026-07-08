@@ -292,7 +292,12 @@ function Trig_AIML_SalvoForPlayer takes player p, player ep, integer focusSlot r
     if CountUnitsInGroup(udg_aiml_SalvoEnemyG) == 0 then
         return
     endif
-    set picked = Trig_AIML_PickSalvoTarget()
+    // [V49] if Blademaster is in DASH/STRIKE, follow its target; else use normal target selection
+    if udg_bm_Target1 != null and not IsUnitDeadBJ(udg_bm_Target1) and GetOwningPlayer(udg_bm_Target1) == ep then
+        set picked = udg_bm_Target1
+    else
+        set picked = Trig_AIML_PickSalvoTarget()
+    endif
     if picked == null then
         return
     endif
