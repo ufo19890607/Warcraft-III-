@@ -46,7 +46,8 @@ BM_GLOBALS = """
     integer udg_bm_HuntCooldown1 = 0    // HUNT冷却计时(tick数,0=可触发)
     integer udg_bm_EvadeCooldown1 = 0   // EVADE冷却(tick数,0=可触发)
     integer udg_bm_ExecuteTimer1 = 0   // [V48] EXECUTE打印节流(tick)
-    unit    udg_bm_ExecuteTarget1 = null   // [V50] EXECUTE lock target (persists until target dies)
+    unit    udg_bm_ExecuteTarget1 = null
+   // [V50] EXECUTE lock target (persists until target dies)
 """
 
 BM_FUNCTIONS = """
@@ -150,7 +151,7 @@ function Trig_AIML_BM_FindHuntTarget takes unit bm, player enemyP returns unit
     loop
         set u = FirstOfGroup(g)
         exitwhen u == null
-        if not IsUnitDeadBJ(u) then
+        if not IsUnitDeadBJ(u) and GetUnitAbilityLevel(u, 'Bvul') == 0 then
             set dx = GetUnitX(u) - bx
             set dy = GetUnitY(u) - by
             set d2 = dx * dx + dy * dy
@@ -357,6 +358,18 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             set bm = null
             return
         endif
+        // [V50] exit 1.5: target invulnerable -> release lock, back to NORMAL
+        if GetUnitAbilityLevel(target, 'Bvul') > 0 then
+            if udg_aiml_DebugMode then
+            call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] STRIKE release (target invul) -> NORMAL|r")
+            endif
+            set udg_bm_State1 = 0
+            set udg_bm_SafeTicks1 = -10
+            set udg_bm_Target1 = null
+            set udg_bm_ExecuteTarget1 = null
+            set bm = null
+            return
+        endif
         // [V41] 退出条件2：HP < 25% -> 撤退保命
         // [V50] EXECUTE lock exception: do not retreat, keep attacking until target dies
         if curHp < maxHp * 0.25 then
@@ -445,10 +458,20 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
 
     // ── NORMAL (safeTicks>=0) ──
 
-    // [V48/V50] ⓪ EXECUTE: enemy hero HP<150 -> burst kill (ignore cooldown/threat, lock target until death)
-    // [V50] if EXECUTE target locked and alive, continue EXECUTE mode (ignore hp threshold)
+    // [V48/V50] ⓪ EXECUTE: enemy hero HP<150 -> burst kill (ignore cooldown/threat, lock target)
+    // [V50] lock persists while target HP < 350 (heal < 200); release if HP >= 350 -> fall back to HUNT
+    // [V50] release if target invulnerable (Avul buff)
     if udg_bm_ExecuteTarget1 != null and not IsUnitDeadBJ(udg_bm_ExecuteTarget1) then
         set target = udg_bm_ExecuteTarget1
+        // [V50] release lock if target became invulnerable
+        if GetUnitAbilityLevel(target, 'Bvul') > 0 then
+            if udg_aiml_DebugMode then
+            call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] EXECUTE release (target invul) -> HUNT|r")
+            endif
+            set udg_bm_ExecuteTarget1 = null
+            set udg_bm_Target1 = null
+            set target = null  // fall through to EVADE/HUNT below
+        endif
     else
         set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
         if target != null then
@@ -457,7 +480,21 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     endif
     if target != null then
         set hp = GetUnitState(target, UNIT_STATE_LIFE)
-        if udg_bm_ExecuteTarget1 == target or hp < 150.0 then
+        // [V50] skip EXECUTE if target invulnerable (no point attacking)
+        // fall through to EVADE/HUNT (engine drops invisible targets)
+        if GetUnitAbilityLevel(target, 'Bvul') > 0 then
+            set target = null  // fall through to EVADE/HUNT below
+        endif
+        if (udg_bm_ExecuteTarget1 == target and hp < 350.0) or hp < 150.0 then
+            // [V50] release lock if target healed above 350 (heal > 200)
+            if udg_bm_ExecuteTarget1 == target and hp >= 350.0 then
+                if udg_aiml_DebugMode then
+                call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] EXECUTE release (hp=" + I2S(R2I(hp)) + " >= 350) -> HUNT|r")
+                endif
+                set udg_bm_ExecuteTarget1 = null
+                set udg_bm_Target1 = null
+                set target = null  // fall through to EVADE/HUNT below
+            endif
             set udg_bm_ExecuteTimer1 = udg_bm_ExecuteTimer1 + 1
             if udg_aiml_DebugMode and udg_bm_ExecuteTimer1 >= 10 then
                 call DisplayTextToForce(GetPlayersAll(), "|cffff0000[BM] EXECUTE! " + GetUnitName(target) + " hp=" + I2S(R2I(hp)) + "|r")
