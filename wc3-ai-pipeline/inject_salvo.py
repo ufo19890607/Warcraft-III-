@@ -234,7 +234,12 @@ endfunction
 
 function Trig_AIML_IssueAttackCB takes nothing returns nothing
     local unit u = GetEnumUnit()
-    local unit target = udg_aiml_FocusTarget1
+    local unit target
+    if GetPlayerId(udg_aiml_SalvoOwnerPlayer) == 0 then
+        set target = udg_aiml_FocusTarget1
+    else
+        set target = udg_aiml_FocusTarget2
+    endif
     if target == null then
         set u = null
         return
@@ -314,8 +319,13 @@ function Trig_AIML_SalvoForPlayer takes player p, player ep, integer focusSlot r
 endfunction
 
 function Trig_AIML_SalvoTick takes nothing returns nothing
-    call Trig_AIML_SalvoForPlayer(Player(0), Player(1), 1)
-    call Trig_AIML_SalvoForPlayer(Player(1), Player(0), 2)
+    // [V50] Only process Computer players, never control human units
+    if GetPlayerController(Player(0)) == MAP_CONTROL_COMPUTER then
+        call Trig_AIML_SalvoForPlayer(Player(0), Player(1), 1)
+    endif
+    if GetPlayerController(Player(1)) == MAP_CONTROL_COMPUTER then
+        call Trig_AIML_SalvoForPlayer(Player(1), Player(0), 2)
+    endif
 endfunction
 
 function Trig_AIML_SalvoInit takes nothing returns nothing

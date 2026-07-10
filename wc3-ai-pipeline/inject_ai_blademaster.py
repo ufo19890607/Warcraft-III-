@@ -548,10 +548,15 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         endif
     endif
 
-    // [V49] NORMAL fallback: follow Salvo focus target, else attack lowest HP hero
-    if udg_aiml_FocusTarget1 != null and not IsUnitDeadBJ(udg_aiml_FocusTarget1) and GetOwningPlayer(udg_aiml_FocusTarget1) == enemyP then
-        set udg_bm_Target1 = udg_aiml_FocusTarget1
-        call IssueTargetOrder(bm, "attack", udg_aiml_FocusTarget1)
+    // [V49/V50] NORMAL fallback: follow Salvo focus target (by AI player slot), else attack lowest HP hero
+    if GetPlayerId(myP) == 0 then
+        set target = udg_aiml_FocusTarget1
+    else
+        set target = udg_aiml_FocusTarget2
+    endif
+    if target != null and not IsUnitDeadBJ(target) and GetOwningPlayer(target) == enemyP then
+        set udg_bm_Target1 = target
+        call IssueTargetOrder(bm, "attack", target)
     else
         set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
         if target != null then
