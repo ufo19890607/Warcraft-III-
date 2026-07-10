@@ -46,6 +46,7 @@ BM_GLOBALS = """
     integer udg_bm_HuntCooldown1 = 0    // HUNT冷却计时(tick数,0=可触发)
     integer udg_bm_EvadeCooldown1 = 0   // EVADE冷却(tick数,0=可触发)
     integer udg_bm_ExecuteTimer1 = 0   // [V48] EXECUTE打印节流(tick)
+    unit    udg_bm_ExecuteTarget1 = null   // [V50] EXECUTE lock target (persists until target dies)
 """
 
 BM_FUNCTIONS = """
@@ -352,23 +353,31 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             set udg_bm_State1 = 0
             set udg_bm_SafeTicks1 = -10
             set udg_bm_Target1 = null
+            set udg_bm_ExecuteTarget1 = null
             set bm = null
             return
         endif
         // [V41] 退出条件2：HP < 25% -> 撤退保命
+        // [V50] EXECUTE lock exception: do not retreat, keep attacking until target dies
         if curHp < maxHp * 0.25 then
-            if udg_aiml_DebugMode then
-            call DisplayTextToForce(GetPlayersAll(), "|cffff4444[BM] STRIKE abort (hp=" + I2S(R2I(curHp)) + " < 25%) -> WAIT|r")
+            if udg_bm_ExecuteTarget1 == target then
+                if udg_aiml_DebugMode then
+                call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] STRIKE hold (EXECUTE lock, hp=" + I2S(R2I(curHp)) + " < 25%) -> continue|r")
+                endif
+            else
+                if udg_aiml_DebugMode then
+                call DisplayTextToForce(GetPlayersAll(), "|cffff4444[BM] STRIKE abort (hp=" + I2S(R2I(curHp)) + " < 25%) -> WAIT|r")
+                endif
+                set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
+                call Trig_AIML_BM_UpdateRetreat(bm, enemyHero)
+                set udg_bm_State1 = 1
+                set udg_bm_SafeTicks1 = 0
+                set udg_bm_WaitTick1 = 0
+                set udg_bm_Target1 = null
+                set enemyHero = null
+                set bm = null
+                return
             endif
-            set enemyHero = Trig_AIML_BM_FindEnemyHero(enemyP)
-            call Trig_AIML_BM_UpdateRetreat(bm, enemyHero)
-            set udg_bm_State1 = 1
-            set udg_bm_SafeTicks1 = 0
-            set udg_bm_WaitTick1 = 0
-            set udg_bm_Target1 = null
-            set enemyHero = null
-            set bm = null
-            return
         endif
         // 每tick重新下attack指令，咬住目标，覆盖母调度
         call IssueTargetOrder(bm, "attack", target)
@@ -436,11 +445,19 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
 
     // ── NORMAL (safeTicks>=0) ──
 
-    // [V48] ⓪ EXECUTE: 敌方英雄HP<150 -> 无脑斩杀 (无视冷却/威胁)
-    set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
+    // [V48/V50] ⓪ EXECUTE: enemy hero HP<150 -> burst kill (ignore cooldown/threat, lock target until death)
+    // [V50] if EXECUTE target locked and alive, continue EXECUTE mode (ignore hp threshold)
+    if udg_bm_ExecuteTarget1 != null and not IsUnitDeadBJ(udg_bm_ExecuteTarget1) then
+        set target = udg_bm_ExecuteTarget1
+    else
+        set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
+        if target != null then
+            set udg_bm_ExecuteTarget1 = null  // found target but hp may be >=150, checked below
+        endif
+    endif
     if target != null then
         set hp = GetUnitState(target, UNIT_STATE_LIFE)
-        if hp < 150.0 then
+        if udg_bm_ExecuteTarget1 == target or hp < 150.0 then
             set udg_bm_ExecuteTimer1 = udg_bm_ExecuteTimer1 + 1
             if udg_aiml_DebugMode and udg_bm_ExecuteTimer1 >= 10 then
                 call DisplayTextToForce(GetPlayersAll(), "|cffff0000[BM] EXECUTE! " + GetUnitName(target) + " hp=" + I2S(R2I(hp)) + "|r")
@@ -454,6 +471,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
                 set udg_bm_State1 = 3
                 set udg_bm_SafeTicks1 = 0
                 set udg_bm_Target1 = target
+                set udg_bm_ExecuteTarget1 = target  // [V50] lock target
             else
                 // 斩杀无视冷却，强制释放疾风步
                 set ww = IssueImmediateOrder(bm, "windwalk")
@@ -464,10 +482,12 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
                     set udg_bm_State1 = 2
                     set udg_bm_SafeTicks1 = 0
                     set udg_bm_Target1 = target
+                    set udg_bm_ExecuteTarget1 = target  // [V50] lock target
                 else
                     // 疾风步CD -> 直接跑过去平A
                     call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
                     set udg_bm_EvadeCooldown1 = 0
+                    set udg_bm_ExecuteTarget1 = target  // [V50] lock target
                 endif
             endif
             set bm = null
@@ -667,6 +687,7 @@ def main():
             f"    set udg_bm_PrevHp1 = 0.0{nl}"
             f"    set udg_bm_Target1 = null{nl}"
             f"    set udg_bm_ExecuteTimer1 = 0{nl}"
+            f"    set udg_bm_ExecuteTarget1 = null{nl}"
             f"    set udg_bm_HuntCooldown1 = 0{nl}"
         )
         src = src[:eol + len(nl)] + reset_code + src[eol + len(nl):]
