@@ -656,3 +656,40 @@ build 日志必须看到：
 
 两个都出现才算成功。缺少任何一个都是底座图不匹配或正则没命中。
 
+
+## Pit 23: Invulnerability buff rawcode is Bvul (not Avul/Bivs/Bpin)
+
+**Found**: 2026-07-11
+
+**Symptom**: BM EXECUTE/STRIKE checks for invulnerability using standard
+buff IDs (Avul, Bivs, Bpin, Bphs, Bpsd) all returned 0. Lich using Potion
+of Invulnerability (pnvl item) was not detected as invulnerable, BM kept
+attacking invulnerable target.
+
+**Root cause**: This custom map uses non-standard buff rawcode for
+invulnerability. Same issue as pit 20d (Crypt Fiend ucry vs standard Uspi).
+The actual buff ID is **Bvul**, confirmed via per-tick diagnostic scan of
+21 candidate buff IDs.
+
+**Standard WC3 invul buff IDs that DO NOT work on this map**:
+- Avul (Invulnerable ability) - NOT this map's invul pot
+- Bivs (Tornado invul) - no
+- Bpin (Potion of Invulnerability standard) - no
+- Bphs (Phase Shift) - no
+- Bpsd (Hex/Burrow) - no
+
+**Working buff ID**:  - detected via GetUnitAbilityLevel(target, 'Bvul') > 0
+
+**Fix**: All invulnerability checks use single Bvul ID:
+- STRIKE state exit (target invul -> release to NORMAL)
+- EXECUTE locked target release
+- EXECUTE new trigger skip
+- FindHuntTarget filter (skip invulnerable units)
+- FindLowestHpHero filter (skip invulnerable heroes)
+
+**Diagnostic method**: per-tick scan all enemy heroes for 21 candidate
+buff IDs, print any non-zero. Screenshot confirmed Bvul=1 when Lich uses
+invul pot.
+
+**Lesson**: Custom maps may override standard buff rawcodes. Always verify
+with runtime diagnostic, never assume standard IDs (same as pit 20d).

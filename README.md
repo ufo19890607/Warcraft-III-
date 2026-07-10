@@ -3,9 +3,23 @@
 
 ![项目架构总览](docs/architecture.png)
 
-## 当前基线版本：V48
+## 当前基线版本：V50
 
-V48 引入剑圣 EXECUTE 斩杀模式 + DebugMode 打印收敛。
+V50 引入 BM-Salvo 协同修复 + EXECUTE 锁定目标 + 无敌检测 (Bvul)。
+
+### V50 BM-Salvo 协同 + EXECUTE 锁定 + 无敌检测 (2026-07-10)
+
+- **Salvo 只控制 Computer**: SalvoTick 加 GetPlayerController 判断，不再抢控人类玩家单位
+- **IssueAttackCB slot 修复**: 按 SalvoOwnerPlayer 动态读 FocusTarget1/2（原硬编码 FocusTarget1）
+- **EXECUTE 锁定目标**: udg_bm_ExecuteTarget1 锁定后持续追杀，目标 HP<350 持续，HP>=350 释放
+- **STRIKE 无敌释放**: 检测 Bvul buff，目标无敌时立即释放回 NORMAL（不撤退）
+- **FindHuntTarget/FindLowestHpHero 过滤 Bvul**: 无敌单位不被选为目标
+- **EXECUTE windwalk CD 路径**: move + NORMAL 冷却 1 tick，不进 DASH（避免卡在 DASH 不触发 windwalk）
+
+### V49 BM-Salvo 协同目标选择 (2026-07-09)
+
+- BM NORMAL 跟随 Salvo FocusTarget；Salvo 跟随 BM Target1 during DASH/STRIKE
+- EVADE 撤退时清 BM Target1，防止 Salvo 跟随 stale 目标
 
 ### V48 剑圣 EXECUTE (2026-07-08)
 

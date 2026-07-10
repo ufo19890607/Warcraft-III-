@@ -80,7 +80,7 @@ function Trig_AIML_BM_FindLowestHpHero takes player enemyP returns unit
     loop
         set u = FirstOfGroup(g)
         exitwhen u == null
-        if IsUnitType(u, UNIT_TYPE_HERO) and not IsUnitDeadBJ(u) then
+        if IsUnitType(u, UNIT_TYPE_HERO) and not IsUnitDeadBJ(u) and GetUnitAbilityLevel(u, 'Bvul') == 0 then
             set hp = GetUnitState(u, UNIT_STATE_LIFE)
             if hp < bestHp then
                 set bestHp = hp
@@ -521,10 +521,11 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
                     set udg_bm_Target1 = target
                     set udg_bm_ExecuteTarget1 = target  // [V50] lock target
                 else
-                    // 疾风步CD -> 直接跑过去平A
+                    // windwalk CD -> move towards target, go NORMAL cooldown (don't enter DASH, let EVADE/HUNT run next tick)
                     call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
                     set udg_bm_EvadeCooldown1 = 0
                     set udg_bm_ExecuteTarget1 = target  // [V50] lock target
+                    set udg_bm_SafeTicks1 = -1
                 endif
             endif
             set bm = null
