@@ -38,6 +38,7 @@ INJECTOR_CREEP="$SCRIPT_DIR/inject_ai_creep_control.py"
 INJECTOR_SURROUND="$SCRIPT_DIR/inject_ai_surround.py"
 INJECTOR_BM="$SCRIPT_DIR/inject_ai_blademaster.py"
 INJECTOR_KODO="$SCRIPT_DIR/inject_ai_kodo.py"
+INJECTOR_SW="$SCRIPT_DIR/inject_ai_spirit_walker.py"
 INJECTOR_ESCAPE="$SCRIPT_DIR/inject_ai_escape.py"
 INJECTOR_BLK="$SCRIPT_DIR/inject_ai_body_block.py"
 INJECTOR_DEBUG="$SCRIPT_DIR/inject_debug.py"
@@ -172,6 +173,14 @@ if grep -q "function Trig_AIML_KodoRetreatForPlayer" "$J"; then
 else
     echo "[9/11] 注入科多兽吞噬后撤..."
     python3 "$INJECTOR_KODO" "$J"
+fi
+
+# [9.5/11] 灵魂行者施法（依赖 SalvoTick）
+if grep -q "function Trig_AIML_SW_TickForPlayer" "$J"; then
+    echo "[9.5/11] 灵魂行者已存在，跳过"
+else
+    echo "[9.5/11] 注入灵魂行者施法..."
+    python3 "$INJECTOR_SW" "$J"
 fi
 
 # [8] Debug命令（可选）
