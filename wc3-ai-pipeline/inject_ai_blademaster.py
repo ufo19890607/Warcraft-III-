@@ -614,23 +614,13 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         endif
     endif
 
-    // [V49/V50] NORMAL fallback: follow Salvo focus target (by AI player slot), else attack lowest HP hero
-    if GetPlayerId(myP) == 0 then
-        set target = udg_aiml_FocusTarget1
-    else
-        set target = udg_aiml_FocusTarget2
-    endif
-    if target != null and not IsUnitDeadBJ(target) and GetOwningPlayer(target) == enemyP then
+    // [V51] NORMAL fallback: BM picks target independently (does NOT follow Salvo focus target)
+    //       Salvo can still follow BM target (one-directional), but BM will not be disrupted by Salvo target switches
+    set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
+    if target != null then
         set udg_bm_Target1 = target
         call IssueTargetOrder(bm, "attack", target)
-        call DisplayTextToForce(GetPlayersAll(), "|cffffff00[BM] ATTACK(focus) " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
-    else
-        set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
-        if target != null then
-            set udg_bm_Target1 = target
-            call IssueTargetOrder(bm, "attack", target)
-            call DisplayTextToForce(GetPlayersAll(), "|cffffff00[BM] ATTACK(lowest) " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
-        endif
+        call DisplayTextToForce(GetPlayersAll(), "|cffffff00[BM] ATTACK(lowest) " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
     endif
 
     set bm = null
