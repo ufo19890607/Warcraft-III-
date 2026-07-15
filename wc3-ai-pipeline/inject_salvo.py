@@ -18,7 +18,7 @@ RANGED_TROOPS = [
     # Human
     "'hrif'", "'hdhw'", "'hgry'", "'hgyr'",
     # Orc
-    "'ohun'", "'otbk'", "'owyv'",
+    "'ohun'", "'otbk'", "'owyv'", "'ospw'",
     # NE
     "'earc'", "'esen'", "'edry'", "'edot'",
     "'ehip'", "'ehpr'", "'efdr'",
