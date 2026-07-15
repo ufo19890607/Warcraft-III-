@@ -126,6 +126,37 @@ function Trig_AIML_BM_FindNearestEnemy takes unit bm, player enemyP returns unit
     return best
 endfunction
 
+// [V51c] Find nearest enemy within given range (for NORMAL fallback: no target selection, just hit whats next to BM)
+function Trig_AIML_BM_FindNearestEnemyInRange takes unit bm, player enemyP, real range returns unit
+    local group g = CreateGroup()
+    local unit u
+    local unit best = null
+    local real bestD = range * range
+    local real bx = GetUnitX(bm)
+    local real by = GetUnitY(bm)
+    local real dx
+    local real dy
+    local real d
+    call GroupEnumUnitsInRange(g, bx, by, range, null)
+    loop
+        set u = FirstOfGroup(g)
+        exitwhen u == null
+        if not IsUnitDeadBJ(u) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) and GetOwningPlayer(u) == enemyP then
+            set dx = GetUnitX(u) - bx
+            set dy = GetUnitY(u) - by
+            set d = dx * dx + dy * dy
+            if d < bestD then
+                set bestD = d
+                set best = u
+            endif
+        endif
+        call GroupRemoveUnit(g, u)
+    endloop
+    call DestroyGroup(g)
+    set g = null
+    return best
+endfunction
+
 // HUNT目标选择（按优先级）:
 //   ① 残血英雄(HP<300, 2000码内)
 //   ② 毁灭者'ubsp'  ③ 黑曜石雕像'uobs'  ④ 女妖'uban'
@@ -614,13 +645,12 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         endif
     endif
 
-    // [V51] NORMAL fallback: BM picks target independently (does NOT follow Salvo focus target)
-    //       Salvo can still follow BM target (one-directional), but BM will not be disrupted by Salvo target switches
-    set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
+    // [V51c] NORMAL fallback: attack nearest enemy within 150yd (no target selection)
+    //         Only HUNT/EXECUTE pick specific targets. BM just hits whatever is next to it.
+    set target = Trig_AIML_BM_FindNearestEnemyInRange(bm, enemyP, 150.0)
     if target != null then
         set udg_bm_Target1 = target
         call IssueTargetOrder(bm, "attack", target)
-        call DisplayTextToForce(GetPlayersAll(), "|cffffff00[BM] ATTACK(lowest) " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
     endif
 
     set bm = null
