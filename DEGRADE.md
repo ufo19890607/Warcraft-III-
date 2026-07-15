@@ -693,3 +693,97 @@ invul pot.
 
 **Lesson**: Custom maps may override standard buff rawcodes. Always verify
 with runtime diagnostic, never assume standard IDs (same as pit 20d).
+
+
+## 坑 24：底座图用错 —— UD-decisive-multiplayer.w3x vs UD-decisive-base.w3x
+
+**发现时间**：2026-07-16
+
+**现象**：V51 起出包后灵魂行者(ospw)脱队、部分 AI 行为异常。
+
+**根因**：
+
+V51 commit `994b681` 起误用了 `UD-decisive-multiplayer.w3x` 作为底座图（该图另有用途，结构与正式底座不同）。V42-V49 一直使用的是 `UD-decisive-base.w3x`。
+
+| 底座图 | 大小 | 用途 | 正确？ |
+|---|---|---|---|
+| `UD-decisive-base.w3x` | 523K | 正式底座图，V42-V49 一直使用 | ✅ |
+| `UD-decisive-multiplayer.w3x` | 524K | 另有用途（多人测试？） | ❌ |
+| `base-reforged.w3x` | 523K | 早期底座 | ❌ |
+
+**修复**：构建脚本参数改回 `UD-decisive-base.w3x`。
+
+**教训**：底座图不能随意更换。更换底座图后必须全量回归测试（出兵、英雄调度、齐射、BM、Kodo、SW 全部验证）。
+
+---
+
+## 坑 25：Ofar 在 Salvo RANGED_HEROES 白名单中打断闪电链施法
+
+**发现时间**：2026-07-16
+
+**现象**：先知(Ofar)突然不放闪电链。
+
+**根因**：
+
+`Ofar` 在 Salvo 的 `RANGED_HEROES` 白名单中，Salvo 每 0.5s 对所有远程英雄下发 `IssueTargetOrder(u, "smart", focusTarget)` 指令。`smart` 指令等同于右键点击目标，会打断正在进行的施法前摇。
+
+闪电链有施法前摇（~0.5s），恰好被 Salvo 的 0.5s tick 周期打断，永远无法释放。
+
+**修复**：从 `RANGED_HEROES` 移除 `'Ofar'`。先知由 WC3 默认 AI 自行判断施放闪电链。
+
+**同类问题**：`'Oshd'`（暗影猎手）此前已因同样原因从 `RANGED_HEROES` 移除。所有有主动施法能力的英雄都不应在 Salvo 白名单中。
+
+**教训**：Salvo 的 `smart` 指令对施法型英雄是致命的。白名单只应包含纯远程输出单位（猎头者、风骑士等），不应包含任何有主动技能的英雄。
+
+---
+
+## 坑 26：BM 跟随 Salvo focus target 导致攻击卡顿
+
+**发现时间**：2026-07-16
+
+**现象**：剑圣攻击时"一卡一卡的不动"，攻击动画不断被打断。
+
+**根因**：
+
+V49/V50 设计了 BM-Salvo 双向跟随：
+- Salvo 跟随 BM 目标（BM in DASH/STRIKE → Salvo focus = BM target）
+- BM 跟随 Salvo focus target（BM NORMAL fallback → target = udg_aiml_FocusTarget1/2）
+
+Salvo 每 0.5s 可能切换目标，BM 每 0.1s 重下 `IssueTargetOrder(bm, "attack", target)`。当 Salvo 切目标时，BM 的 attack 目标跟着变，攻击动画被重置。0.5s 的切换周期恰好打断 BM 的攻击前摇。
+
+**修复（V51b）**：切断 BM -> Salvo 方向。BM NORMAL fallback 不再读取 `udg_aiml_FocusTarget1/2`，改为独立选目标。Salvo 仍可跟随 BM 目标（单向），数据流变为：
+
+```
+BM 独立选目标 -> udg_bm_Target1 -> Salvo 读取跟随（带 anti-kite 800 码检查）
+```
+
+**教训**：不同频率的 AI 模块之间不应做双向目标跟随。高频模块（BM 0.1s）跟随低频模块（Salvo 0.5s）的目标切换，必然导致高频侧的指令抖动。单向跟随（低频读高频）是安全的设计模式。
+
+---
+
+## 坑 27：灵魂行者(ospw) 在 Combat_AI 中无独立 dispatch 函数
+
+**发现时间**：2026-07-16
+
+**现象**：灵魂行者在 Round 1 特殊模式（卡位/围杀/逃跑）下完全脱队，原地发呆。
+
+**根因**：
+
+Combat_AI 的 `Computer1/2Combat_AI_Actions` 中，每个英雄类型有独立的 `ForGroupBJ` dispatch（如 Hamg -> Func004A, Ofar -> Func005A 等），但 `ospw` 没有独立 dispatch 函数。`ospw` 完全依赖军团攻击指令（`GroupPointOrderLocBJ("attack")`）来跟随大部队移动。
+
+V40 守卫在 Round 1 `Round1Mode >= 1` 时跳过军团攻击指令 -> `ospw` 零指令 -> 原地发呆。
+
+**修复（V51c）**：在 V40 守卫的 `endif` 之后，为 `ospw` 加一行独立的 `GroupPointOrderLocBJ` dispatch：
+
+```jass
+    // [V40] Skip army-attack in surround/escape mode
+    if not (udg_RoundNo == 1 and udg_aiml_Round1Mode >= 1) then
+        ...original army-attack...
+    endif
+    // [V51c] Spirit Walker always follows army (not guarded by V40)
+    call GroupPointOrderLocBJ( GetUnitsOfPlayerAndTypeId(Player(0), 'ospw'), "attack", enemyLoc )
+```
+
+每 1s（Combat_AI timer 频率）触发一次，不受 V40 守卫限制。频率足够低，不会打断施法。
+
+**教训**：自定义地图新增的兵种类型如果没有在 Combat_AI 的 dispatch 列表中，会完全脱离母调度。排查方法：grep `war3map.j` 中 `ForGroupBJ.*GetUnitsOfPlayerAndTypeId` 确认哪些兵种有独立 dispatch。不在列表中的兵种只靠军团攻击指令移动，V40 守卫一截断就脱队。
