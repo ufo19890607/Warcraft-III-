@@ -6,7 +6,7 @@ Modify values here to tune all AI modules.
 """
 
 # Tick intervals (seconds)
-TICK_SALVO          = 0.50    # Ranged salvo + focus retreat (shared SalvoTick)
+TICK_SALVO          = 0.50    # Ranged salvo + focus retreat + Spirit Walker spells (shared SalvoTick)
 TICK_HERO_MAGIC     = 0.10    # Hero magic (TC stomp, Shadow Hunter hex/heal)
 TICK_CREEP_CONTROL  = 0.30    # Creep last-hit (independent timer)
 TICK_SURROUND       = 0.30    # Surround / encircle (independent timer)
