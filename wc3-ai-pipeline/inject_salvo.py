@@ -88,7 +88,13 @@ SALVO_GLOBALS = """    // [AIML-SALVO] state (V18, custom whitelist)
     unit    udg_aiml_SalvoPicked = null
     unit    udg_aiml_SalvoPickedHero = null
     boolean udg_aiml_DebugMode = false
-    unit    udg_aiml_LastFireTarget = null"""
+    unit    udg_aiml_LastFireTarget = null
+    // [V50] anti-kite: army centroid for BM follow distance check
+    real    udg_aiml_SalvoCentroidX = 0.00
+    real    udg_aiml_SalvoCentroidY = 0.00
+    real    udg_aiml_SalvoCentSumX = 0.00
+    real    udg_aiml_SalvoCentSumY = 0.00
+    integer udg_aiml_SalvoCentCount = 0"""
 
 
 SALVO_FUNCTIONS_TEMPLATE = """
@@ -276,8 +282,35 @@ function Trig_AIML_RebuildGroupEnemy takes nothing returns nothing
     call GroupEnumUnitsOfPlayer(udg_aiml_SalvoEnemyG, udg_aiml_SalvoEnemyPlayer, Filter(function Trig_AIML_IsValidSalvoTarget))
 endfunction
 
+// [V50] callback: accumulate unit positions for centroid calc
+function Trig_AIML_SalvoCentroidCB takes nothing returns nothing
+    local unit u = GetEnumUnit()
+    if not IsUnitType(u, UNIT_TYPE_DEAD) then
+        set udg_aiml_SalvoCentSumX = udg_aiml_SalvoCentSumX + GetUnitX(u)
+        set udg_aiml_SalvoCentSumY = udg_aiml_SalvoCentSumY + GetUnitY(u)
+        set udg_aiml_SalvoCentCount = udg_aiml_SalvoCentCount + 1
+    endif
+    set u = null
+endfunction
+
+function Trig_AIML_SalvoCalcCentroid takes nothing returns nothing
+    set udg_aiml_SalvoCentSumX = 0.00
+    set udg_aiml_SalvoCentSumY = 0.00
+    set udg_aiml_SalvoCentCount = 0
+    call ForGroup(udg_aiml_SalvoArmyG, function Trig_AIML_SalvoCentroidCB)
+    if udg_aiml_SalvoCentCount > 0 then
+        set udg_aiml_SalvoCentroidX = udg_aiml_SalvoCentSumX / I2R(udg_aiml_SalvoCentCount)
+        set udg_aiml_SalvoCentroidY = udg_aiml_SalvoCentSumY / I2R(udg_aiml_SalvoCentCount)
+    endif
+endfunction
+
 function Trig_AIML_SalvoForPlayer takes player p, player ep, integer focusSlot returns nothing
     local unit picked
+    local real bmtx
+    local real bmty
+    local real cdx
+    local real cdy
+    local real bmDistSq
     set udg_aiml_SalvoOwnerPlayer = p
     set udg_aiml_SalvoEnemyPlayer = ep
     call Trig_AIML_RebuildGroupArmy()
@@ -285,6 +318,7 @@ function Trig_AIML_SalvoForPlayer takes player p, player ep, integer focusSlot r
         return
     endif
     call Trig_AIML_RebuildGroupRanged()
+    call Trig_AIML_SalvoCalcCentroid()
     if I2R(udg_aiml_SalvoRangedCount) < I2R(udg_aiml_SalvoArmyCount) * udg_aiml_SalvoMajorityRatio then
         if focusSlot == 1 then
             set udg_aiml_FocusTarget1 = null
@@ -297,9 +331,23 @@ function Trig_AIML_SalvoForPlayer takes player p, player ep, integer focusSlot r
     if CountUnitsInGroup(udg_aiml_SalvoEnemyG) == 0 then
         return
     endif
-    // [V49] if Blademaster is in DASH/STRIKE, follow its target; else use normal target selection
+    // [V49/V50] if Blademaster is in DASH/STRIKE, follow its target;
+    // BUT only if BM target is within 800yd of army centroid (anti-kite)
     if udg_bm_Target1 != null and not IsUnitDeadBJ(udg_bm_Target1) and GetOwningPlayer(udg_bm_Target1) == ep then
-        set picked = udg_bm_Target1
+        set bmtx = GetUnitX(udg_bm_Target1)
+        set bmty = GetUnitY(udg_bm_Target1)
+        set cdx = bmtx - udg_aiml_SalvoCentroidX
+        set cdy = bmty - udg_aiml_SalvoCentroidY
+        set bmDistSq = cdx * cdx + cdy * cdy
+        if bmDistSq < 640000.0 then
+            set picked = udg_bm_Target1
+        else
+            // BM target too far from army centroid (>800yd), don't follow - pick nearest front
+            if udg_aiml_DebugMode and udg_RoundNo != 1 then
+                call DisplayTextToForce(GetPlayersAll(), "[SALVO] BM target too far (" + I2S(R2I(SquareRoot(bmDistSq))) + "yd), anti-kite -> nearest front")
+            endif
+            set picked = Trig_AIML_PickSalvoTarget()
+        endif
     else
         set picked = Trig_AIML_PickSalvoTarget()
     endif
