@@ -47,6 +47,7 @@ BM_GLOBALS = """
     integer udg_bm_EvadeCooldown1 = 0   // EVADE冷却(tick数,0=可触发)
     integer udg_bm_ExecuteTimer1 = 0   // [V48] EXECUTE打印节流(tick)
     unit    udg_bm_ExecuteTarget1 = null
+    integer udg_bm_AttackPrintCd1 = 0  // [V51] forced attack print cooldown
    // [V50] EXECUTE lock target (persists until target dies)
 """
 
@@ -355,6 +356,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             set udg_bm_SafeTicks1 = -10
             set udg_bm_Target1 = null
             set udg_bm_ExecuteTarget1 = null
+    set udg_bm_AttackPrintCd1 = 0
             set bm = null
             return
         endif
@@ -394,6 +396,12 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         endif
         // 每tick重新下attack指令，咬住目标，覆盖母调度
         call IssueTargetOrder(bm, "attack", target)
+        // [V51] forced print: STRIKE target (throttled 1s)
+        set udg_bm_AttackPrintCd1 = udg_bm_AttackPrintCd1 + 1
+        if udg_bm_AttackPrintCd1 >= 10 then
+            call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] STRIKE " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
+            set udg_bm_AttackPrintCd1 = 0
+        endif
         set bm = null
         return
     endif
@@ -615,11 +623,13 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     if target != null and not IsUnitDeadBJ(target) and GetOwningPlayer(target) == enemyP then
         set udg_bm_Target1 = target
         call IssueTargetOrder(bm, "attack", target)
+        call DisplayTextToForce(GetPlayersAll(), "|cffffff00[BM] ATTACK(focus) " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
     else
         set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
         if target != null then
             set udg_bm_Target1 = target
             call IssueTargetOrder(bm, "attack", target)
+            call DisplayTextToForce(GetPlayersAll(), "|cffffff00[BM] ATTACK(lowest) " + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
         endif
     endif
 

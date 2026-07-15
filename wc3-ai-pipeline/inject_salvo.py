@@ -28,7 +28,7 @@ RANGED_TROOPS = [
 
 RANGED_HEROES = [
     "'Hamg'", "'Hblm'",
-    "'Ofar'", "'Oshd'",
+    "'Oshd'",
     "'Ulic'",
     "'Emoo'", "'Ekee'",
     "'Nbrn'", "'Nfir'", "'Nngs'", "'Ntin'",
