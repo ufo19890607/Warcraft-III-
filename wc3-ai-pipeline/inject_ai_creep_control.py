@@ -691,7 +691,9 @@ endfunction"""
         guarded = ("    // [V40] Skip army-attack in surround/escape mode" + nl
                    + "    if not (udg_RoundNo == 1 and udg_aiml_Round1Mode >= 1) then" + nl
                    + original_lines
-                   + "    endif" + nl)
+                   + "    endif" + nl
+                   + "    // [V51c] Spirit Walker always follows army (not guarded by V40)" + nl
+                   + "    call GroupPointOrderLocBJ( GetUnitsOfPlayerAndTypeId(Player(0), 'ospw'), \"attack\", GetUnitLoc(GroupPickRandomUnit(GetUnitsOfPlayerMatching(Player(1), Condition(function Trig_Computer1Combat_AI_Func001003001001002)))) )" + nl)
         src = src[:c1_body_start] + guarded + src[c1_gpo2_end:]
         print("[V40] patched Computer1Combat_AI: selective guard on army-attack")
 
@@ -708,7 +710,9 @@ endfunction"""
         guarded2 = ("    // [V40] Skip army-attack in surround/escape mode" + nl
                     + "    if not (udg_RoundNo == 1 and udg_aiml_Round1Mode >= 1) then" + nl
                     + original_lines2
-                    + "    endif" + nl)
+                    + "    endif" + nl
+                    + "    // [V51c] Spirit Walker always follows army (not guarded by V40)" + nl
+                    + "    call GroupPointOrderLocBJ( GetUnitsOfPlayerAndTypeId(Player(1), 'ospw'), \"attack\", GetUnitLoc(GroupPickRandomUnit(GetUnitsOfPlayerMatching(Player(0), Condition(function Trig_Computer2Combat_AI_Func002003001001002)))) )" + nl)
         src = src[:c2_body_start] + guarded2 + src[c2_gpo2_end:]
         print("[V40] patched Computer2Combat_AI: selective guard on army-attack")
 
