@@ -3,7 +3,7 @@
 inject_ai_spirit_walker.py - Spirit Walker spell AI (V51d)
 
 Hooks into SalvoTick (0.5s). Two phases per tick:
-  1. Dispel: find friendly unit with Curse ('Bcur') or Slow ('Bslo') buff
+  1. Dispel: find friendly unit with Curse ('Bcrs') or Slow ('Bslo') buff
      (hero priority), cast Dispel Magic at its position
   2. Spirit Link: find friendly unit without Spirit Link ('Bslf') buff
      (hero priority), cast Spirit Link on it
@@ -21,20 +21,26 @@ SW_FUNCTIONS = r"""
 // [SPIRIT WALKER] Spell AI - Dispel + Spirit Link (V51d)
 //===========================================================================
 
+
 // Find friendly unit with Curse or Slow buff (hero priority)
 // Returns null if no unit needs dispel
+// Spirit Link buff rawcode is Bspl (not Bslf), Curse debuff is Bcrs (not Bcur)
 function Trig_AIML_SW_FindDispelTarget takes player myP returns unit
     local group g = CreateGroup()
     local unit u
     local unit bestHero = null
     local unit bestUnit = null
+    local boolean diagDone = false
     call GroupEnumUnitsOfPlayer(g, myP, null)
     loop
         set u = FirstOfGroup(g)
         exitwhen u == null
         call GroupRemoveUnit(g, u)
         if not IsUnitDeadBJ(u) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) then
-            if GetUnitAbilityLevel(u, 'Bcur') > 0 or GetUnitAbilityLevel(u, 'Bslo') > 0 then
+            if not diagDone then
+                set diagDone = true
+            endif
+            if GetUnitAbilityLevel(u, 'Bcrs') > 0 or GetUnitAbilityLevel(u, 'Bslo') > 0 then
                 if IsUnitType(u, UNIT_TYPE_HERO) then
                     set bestHero = u
                 else
@@ -54,7 +60,7 @@ endfunction
 
 // Find friendly unit without Spirit Link buff (hero priority)
 // Returns null if all units already have Spirit Link
-// [DIAG] Currently uses Bslf but also runs diagnostic scan on first hero
+// Spirit Link buff rawcode confirmed as Bspl via diagnostic scan
 function Trig_AIML_SW_FindSpiritLinkTarget takes player myP returns unit
     local group g = CreateGroup()
     local unit u
