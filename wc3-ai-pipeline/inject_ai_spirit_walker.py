@@ -54,6 +54,7 @@ endfunction
 
 // Find friendly unit without Spirit Link buff (hero priority)
 // Returns null if all units already have Spirit Link
+// [DIAG] Currently uses Bslf but also runs diagnostic scan on first hero
 function Trig_AIML_SW_FindSpiritLinkTarget takes player myP returns unit
     local group g = CreateGroup()
     local unit u
@@ -65,7 +66,7 @@ function Trig_AIML_SW_FindSpiritLinkTarget takes player myP returns unit
         exitwhen u == null
         call GroupRemoveUnit(g, u)
         if not IsUnitDeadBJ(u) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) then
-            if GetUnitAbilityLevel(u, 'Bslf') == 0 then
+            if GetUnitAbilityLevel(u, 'Bspl') == 0 then
                 if IsUnitType(u, UNIT_TYPE_HERO) then
                     set bestHero = u
                 else
