@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """
 inject_salvo.py - Ranged-force concentrated salvo (V18, custom whitelist)
-
 Inject:
   - Salvo globals + functions
   - SalvoInit timer hook into main()
   - Independent trigger with configurable tick from ai_config.py
-
 usage: inject_salvo.py <input.j> <output.j>
 """
 import sys
 import re
 from ai_config import TICK_SALVO
-
 # ---- Whitelist ----
 RANGED_TROOPS = [
     # Human
@@ -25,18 +22,13 @@ RANGED_TROOPS = [
     # UD
     "'ucry'", "'uabo'", "'uobs'", "'ufro'", "'ugar'", "'ugrm'",
 ]
-
 RANGED_HEROES = [
     "'Hamg'", "'Hblm'",
-    "'Oshd'",
     "'Ulic'",
     "'Emoo'", "'Ekee'",
     "'Nbrn'", "'Nfir'", "'Nngs'", "'Ntin'",
 ]
-
 ALL_RANGED = RANGED_TROOPS + RANGED_HEROES
-
-
 def build_is_ranged_troop():
     body = []
     body.append("function Trig_AIML_IsRangedTroop takes nothing returns boolean")
@@ -61,8 +53,6 @@ def build_is_ranged_troop():
     body.append("    return ok")
     body.append("endfunction")
     return "\n".join(body)
-
-
 SALVO_GLOBALS = """    // [AIML-SALVO] state (V18, custom whitelist)
     unit    udg_aiml_FocusTarget1 = null
     unit    udg_aiml_FocusTarget2 = null
@@ -95,14 +85,11 @@ SALVO_GLOBALS = """    // [AIML-SALVO] state (V18, custom whitelist)
     real    udg_aiml_SalvoCentSumX = 0.00
     real    udg_aiml_SalvoCentSumY = 0.00
     integer udg_aiml_SalvoCentCount = 0"""
-
-
 SALVO_FUNCTIONS_TEMPLATE = """
 //===========================================================================
 // [AIML-SALVO] Ranged-force concentrated salvo (V18, custom whitelist)
 //===========================================================================
 __IS_RANGED_TROOP_PLACEHOLDER__
-
 function Trig_AIML_IsArmyUnit takes nothing returns boolean
     local unit u = GetFilterUnit()
     local boolean ok = true
@@ -119,7 +106,6 @@ function Trig_AIML_IsArmyUnit takes nothing returns boolean
     set u = null
     return ok
 endfunction
-
 function Trig_AIML_IsValidSalvoTarget takes nothing returns boolean
     local unit u = GetFilterUnit()
     local boolean ok = true
@@ -136,7 +122,6 @@ function Trig_AIML_IsValidSalvoTarget takes nothing returns boolean
     set u = null
     return ok
 endfunction
-
 function Trig_AIML_UpdateMinDistCB takes nothing returns nothing
     local unit a = GetEnumUnit()
     local real ax = GetUnitX(a)
@@ -149,7 +134,6 @@ function Trig_AIML_UpdateMinDistCB takes nothing returns nothing
     endif
     set a = null
 endfunction
-
 function Trig_AIML_MinDistSqToArmy takes real ex, real ey returns real
     set udg_aiml_SalvoCurEx = ex
     set udg_aiml_SalvoCurEy = ey
@@ -157,7 +141,6 @@ function Trig_AIML_MinDistSqToArmy takes real ex, real ey returns real
     call ForGroup(udg_aiml_SalvoArmyG, function Trig_AIML_UpdateMinDistCB)
     return udg_aiml_SalvoCurMinD
 endfunction
-
 function Trig_AIML_SelectRoundCB takes nothing returns nothing
     local unit u = GetEnumUnit()
     local real ex
@@ -177,7 +160,6 @@ function Trig_AIML_SelectRoundCB takes nothing returns nothing
     endif
     set u = null
 endfunction
-
 function Trig_AIML_PickPhase2CB takes nothing returns nothing
     local unit u = GetEnumUnit()
     local real ex
@@ -206,7 +188,6 @@ function Trig_AIML_PickPhase2CB takes nothing returns nothing
     endif
     set u = null
 endfunction
-
 function Trig_AIML_PickSalvoTarget takes nothing returns unit
     local integer round
     local integer rowN = udg_aiml_SalvoFrontRowCount
@@ -237,7 +218,6 @@ function Trig_AIML_PickSalvoTarget takes nothing returns unit
     endif
     return udg_aiml_SalvoPicked
 endfunction
-
 function Trig_AIML_IssueAttackCB takes nothing returns nothing
     local unit u = GetEnumUnit()
     local unit target
@@ -264,24 +244,20 @@ function Trig_AIML_IssueAttackCB takes nothing returns nothing
     call IssueTargetOrder(u, "smart", target)
     set u = null
 endfunction
-
 function Trig_AIML_RebuildGroupArmy takes nothing returns nothing
     call GroupClear(udg_aiml_SalvoArmyG)
     call GroupEnumUnitsOfPlayer(udg_aiml_SalvoArmyG, udg_aiml_SalvoOwnerPlayer, Filter(function Trig_AIML_IsArmyUnit))
     set udg_aiml_SalvoArmyCount = CountUnitsInGroup(udg_aiml_SalvoArmyG)
 endfunction
-
 function Trig_AIML_RebuildGroupRanged takes nothing returns nothing
     call GroupClear(udg_aiml_SalvoRangedG)
     call GroupEnumUnitsOfPlayer(udg_aiml_SalvoRangedG, udg_aiml_SalvoOwnerPlayer, Filter(function Trig_AIML_IsRangedTroop))
     set udg_aiml_SalvoRangedCount = CountUnitsInGroup(udg_aiml_SalvoRangedG)
 endfunction
-
 function Trig_AIML_RebuildGroupEnemy takes nothing returns nothing
     call GroupClear(udg_aiml_SalvoEnemyG)
     call GroupEnumUnitsOfPlayer(udg_aiml_SalvoEnemyG, udg_aiml_SalvoEnemyPlayer, Filter(function Trig_AIML_IsValidSalvoTarget))
 endfunction
-
 // [V50] callback: accumulate unit positions for centroid calc
 function Trig_AIML_SalvoCentroidCB takes nothing returns nothing
     local unit u = GetEnumUnit()
@@ -292,7 +268,6 @@ function Trig_AIML_SalvoCentroidCB takes nothing returns nothing
     endif
     set u = null
 endfunction
-
 function Trig_AIML_SalvoCalcCentroid takes nothing returns nothing
     set udg_aiml_SalvoCentSumX = 0.00
     set udg_aiml_SalvoCentSumY = 0.00
@@ -303,7 +278,6 @@ function Trig_AIML_SalvoCalcCentroid takes nothing returns nothing
         set udg_aiml_SalvoCentroidY = udg_aiml_SalvoCentSumY / I2R(udg_aiml_SalvoCentCount)
     endif
 endfunction
-
 function Trig_AIML_SalvoForPlayer takes player p, player ep, integer focusSlot returns nothing
     local unit picked
     local real bmtx
@@ -365,7 +339,6 @@ function Trig_AIML_SalvoForPlayer takes player p, player ep, integer focusSlot r
     endif
     call ForGroup(udg_aiml_SalvoRangedG, function Trig_AIML_IssueAttackCB)
 endfunction
-
 function Trig_AIML_SalvoTick takes nothing returns nothing
     // [V50] Only process Computer players, never control human units
     if GetPlayerController(Player(0)) == MAP_CONTROL_COMPUTER then
@@ -375,7 +348,6 @@ function Trig_AIML_SalvoTick takes nothing returns nothing
         call Trig_AIML_SalvoForPlayer(Player(1), Player(0), 2)
     endif
 endfunction
-
 function Trig_AIML_SalvoInit takes nothing returns nothing
     local trigger t
     set udg_aiml_SalvoEnemyG = CreateGroup()
@@ -385,22 +357,16 @@ function Trig_AIML_SalvoInit takes nothing returns nothing
     call TriggerRegisterTimerEvent(t, __TICK_SALVO__, true)
     call TriggerAddAction(t, function Trig_AIML_SalvoTick)
 endfunction
-
 """
-
-
 def detect_newline(src_bytes):
     if b"\r\n" in src_bytes[:4096]:
         return "\r\n"
     return "\n"
-
-
 def inject(in_path, out_path):
     with open(in_path, "rb") as f:
         raw = f.read()
     nl = detect_newline(raw)
     src = raw.decode("latin-1")
-
     # 1) Inject Salvo globals into endglobals
     eg = "endglobals" + nl
     if eg not in src:
@@ -409,7 +375,6 @@ def inject(in_path, out_path):
     idx = src.find(eg)
     src = src[:idx] + extra_g + src[idx:]
     print("[SALVO] inserted globals")
-
     # 2) Inject Salvo functions after endglobals
     idx_after = src.find(eg) + len(eg)
     funcs = SALVO_FUNCTIONS_TEMPLATE.replace(
@@ -419,7 +384,6 @@ def inject(in_path, out_path):
     funcs = funcs.replace("\n", nl)
     src = src[:idx_after] + funcs + src[idx_after:]
     print("[SALVO] inserted functions")
-
     # 3) Hook SalvoInit into main()
     main_pat = re.compile(
         r'function main takes nothing returns nothing' + re.escape(nl)
@@ -437,13 +401,10 @@ def inject(in_path, out_path):
         )
         src = src[: m_main.start()] + new_main + src[m_main.end():]
         print("[SALVO] hooked SalvoInit into main()")
-
     # 4) Write out
     with open(out_path, "wb") as f:
         f.write(src.encode("latin-1"))
     print(f"[SALVO] OK -> {out_path} ({len(src)} bytes)")
-
-
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print(__doc__)
