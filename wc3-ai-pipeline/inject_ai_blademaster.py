@@ -282,6 +282,12 @@ function Trig_AIML_BM_UpdateRetreat takes unit bm, unit enemyHero returns nothin
     call IssuePointOrder(bm, "smart", rx, ry)
 endfunction
 
+// [V52] Combat_AI filter: exclude BM from parent dispatch
+// Patched into Trig_Computer1Combat_AI_Func001001002 and Func002001002
+function Trig_AIML_BM_IsNotBlademaster takes nothing returns boolean
+    return GetUnitTypeId(GetFilterUnit()) != 'Obla'
+endfunction
+
 function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns nothing
     local unit bm
     local unit enemyHero
@@ -502,9 +508,14 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     endif
 
     // ── NORMAL冷却 (safeTicks<0) ──
+    // [V52] also attack nearest enemy during cooldown (don't let parent dispatch take over)
     if safeTicks < 0 then
         set safeTicks = safeTicks + 1
         set udg_bm_SafeTicks1 = safeTicks
+        set target = Trig_AIML_BM_FindNearestEnemyInRange(bm, enemyP, 150.0)
+        if target != null and GetUnitAbilityLevel(target, 'Abur') == 0 then
+            call IssueTargetOrder(bm, "attack", target)
+        endif
         set bm = null
         return
     endif
@@ -788,6 +799,27 @@ def main():
         print("[BM] added state reset to Variable Reset block")
     else:
         print("[BM] WARN: Variable Reset block not found, skipping reset injection")
+
+    # [V52] Patch Combat_AI filter functions to exclude BM (Obla)
+    for filter_func in [
+        "Trig_Computer1Combat_AI_Func001001002",
+        "Trig_Computer2Combat_AI_Func002001002",
+    ]:
+        # Replace the return statement to also check for BM
+        old_ret = f"function {filter_func} takes nothing returns boolean"
+        idx = src.find(old_ret)
+        if idx != -1:
+            # Find the endfunction after this function
+            end_idx = src.find("endfunction", idx + 10)
+            if end_idx != -1:
+                old_body = src[idx:end_idx + len("endfunction")]
+                new_body = (
+                    f"function {filter_func} takes nothing returns boolean{nl}"
+                    f"    return GetBooleanAnd(GetBooleanAnd((RectContainsUnit(gg_rct_P1BaseArea, GetFilterUnit()) == false), (RectContainsUnit(gg_rct_P2BaseArea, GetFilterUnit()) == false)), GetUnitTypeId(GetFilterUnit()) != 'Obla'){nl}"
+                    f"endfunction"
+                )
+                src = src[:idx] + new_body + src[end_idx + len("endfunction"):]
+                print(f"[BM] patched {filter_func} to exclude Blademaster")
 
     # Disable AntiCheat triggers (clear Actions body)
     for ac_func in [
