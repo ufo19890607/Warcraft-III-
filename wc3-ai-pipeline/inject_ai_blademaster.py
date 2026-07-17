@@ -126,6 +126,7 @@ function Trig_AIML_BM_FindNearestEnemy takes unit bm, player enemyP returns unit
     return best
 endfunction
 
+
 // [V51c] Find nearest enemy within given range (for NORMAL fallback: no target selection, just hit whats next to BM)
 function Trig_AIML_BM_FindNearestEnemyInRange takes unit bm, player enemyP, real range returns unit
     local group g = CreateGroup()
@@ -141,7 +142,7 @@ function Trig_AIML_BM_FindNearestEnemyInRange takes unit bm, player enemyP, real
     loop
         set u = FirstOfGroup(g)
         exitwhen u == null
-        if not IsUnitDeadBJ(u) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) and GetOwningPlayer(u) == enemyP then
+        if not IsUnitDeadBJ(u) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) and GetUnitAbilityLevel(u, 'Abur') == 0 and GetOwningPlayer(u) == enemyP then
             set dx = GetUnitX(u) - bx
             set dy = GetUnitY(u) - by
             set d = dx * dx + dy * dy
@@ -304,6 +305,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     endif
     set curHp = GetUnitState(bm, UNIT_STATE_LIFE)
     set maxHp = GetUnitState(bm, UNIT_STATE_MAX_LIFE)
+
     set state = udg_bm_State1
     set safeTicks = udg_bm_SafeTicks1
     set waitTick = udg_bm_WaitTick1
@@ -388,6 +390,18 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             set udg_bm_Target1 = null
             set udg_bm_ExecuteTarget1 = null
     set udg_bm_AttackPrintCd1 = 0
+            set bm = null
+            return
+        endif
+        // [V52] exit 1.6: target burrowed (Abur) -> release to NORMAL, find new target
+        if GetUnitAbilityLevel(target, 'Abur') > 0 then
+            if udg_aiml_DebugMode then
+            call DisplayTextToForce(GetPlayersAll(), "|cff00ffff[BM] STRIKE done (target submerged) -> NORMAL|r")
+            endif
+            set udg_bm_State1 = 0
+            set udg_bm_SafeTicks1 = -10
+            set udg_bm_Target1 = null
+            set udg_bm_ExecuteTarget1 = null
             set bm = null
             return
         endif
@@ -496,6 +510,18 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     endif
 
     // ── NORMAL (safeTicks>=0) ──
+
+    // [V52] if BM is silenced (BNsi), skip EXECUTE/HUNT (cannot cast windwalk)
+    if GetUnitAbilityLevel(bm, 'BNsi') > 0 then
+        // silenced: NORMAL fallback only (150yd nearest enemy)
+        set target = Trig_AIML_BM_FindNearestEnemyInRange(bm, enemyP, 150.0)
+        if target != null then
+            set udg_bm_Target1 = target
+            call IssueTargetOrder(bm, "attack", target)
+        endif
+        set bm = null
+        return
+    endif
 
     // [V48/V50] ⓪ EXECUTE: enemy hero HP<150 -> burst kill (ignore cooldown/threat, lock target)
     // [V50] lock persists while target HP < 350 (heal < 200); release if HP >= 350 -> fall back to HUNT
@@ -648,7 +674,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     // [V51c] NORMAL fallback: attack nearest enemy within 150yd (no target selection)
     //         Only HUNT/EXECUTE pick specific targets. BM just hits whatever is next to it.
     set target = Trig_AIML_BM_FindNearestEnemyInRange(bm, enemyP, 150.0)
-    if target != null then
+    if target != null and GetUnitAbilityLevel(target, 'Abur') == 0 then
         set udg_bm_Target1 = target
         call IssueTargetOrder(bm, "attack", target)
     endif
