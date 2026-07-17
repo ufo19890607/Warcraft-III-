@@ -256,6 +256,31 @@ function Trig_AIML_BM_FindEnemyHero takes player enemyP returns unit
     return null
 endfunction
 
+// [V52] Find friendly Shadow Hunter (Oshd) for retreat target
+function Trig_AIML_BM_FindShadowHunter takes player myP returns unit
+    local group g = CreateGroup()
+    local unit u
+    local unit best = null
+    local real bestD = 999999.0
+    local real bx = GetUnitX(GetEnumUnit())
+    local real by = GetUnitY(GetEnumUnit())
+    call GroupEnumUnitsOfPlayer(g, myP, null)
+    loop
+        set u = FirstOfGroup(g)
+        exitwhen u == null
+        call GroupRemoveUnit(g, u)
+        if not IsUnitDeadBJ(u) and GetUnitTypeId(u) == 'Oshd' then
+            set best = u
+            call GroupClear(g)
+            exitwhen true
+        endif
+    endloop
+    call DestroyGroup(g)
+    set g = null
+    set u = null
+    return best
+endfunction
+
 function Trig_AIML_BM_UpdateRetreat takes unit bm, unit enemyHero returns nothing
     local real bx = GetUnitX(bm)
     local real by = GetUnitY(bm)
@@ -264,22 +289,45 @@ function Trig_AIML_BM_UpdateRetreat takes unit bm, unit enemyHero returns nothin
     local real len
     local real rx
     local real ry
-    if enemyHero != null then
+    local unit sh = Trig_AIML_BM_FindShadowHunter(GetOwningPlayer(bm))
+    if sh != null then
+        // [V52] retreat towards Shadow Hunter for healing
+        set vx = GetUnitX(sh) - bx
+        set vy = GetUnitY(sh) - by
+        set len = SquareRoot(vx * vx + vy * vy)
+        if len < 1.0 then
+            set len = 1.0
+        endif
+        // move towards SH (not all the way, stop 200yd before to avoid clumping)
+        if len > 200.0 then
+            set rx = bx + vx / len * (len - 200.0)
+            set ry = by + vy / len * (len - 200.0)
+        else
+            // already close to SH, stay
+            set rx = bx
+            set ry = by
+        endif
+        set udg_bm_RetreatX1 = rx
+        set udg_bm_RetreatY1 = ry
+        call IssuePointOrder(bm, "smart", rx, ry)
+    elseif enemyHero != null then
+        // no SH found, fallback: retreat away from enemy
         set vx = bx - GetUnitX(enemyHero)
         set vy = by - GetUnitY(enemyHero)
+        set len = SquareRoot(vx * vx + vy * vy)
+        if len < 1.0 then
+            set len = 1.0
+        endif
+        set rx = bx + vx / len * 600.0
+        set ry = by + vy / len * 600.0
+        set udg_bm_RetreatX1 = rx
+        set udg_bm_RetreatY1 = ry
+        call IssuePointOrder(bm, "smart", rx, ry)
     else
-        set vx = 0.0
-        set vy = 1.0
+        set udg_bm_RetreatX1 = bx
+        set udg_bm_RetreatY1 = by
     endif
-    set len = SquareRoot(vx * vx + vy * vy)
-    if len < 1.0 then
-        set len = 1.0
-    endif
-    set rx = bx + vx / len * 600.0
-    set ry = by + vy / len * 600.0
-    set udg_bm_RetreatX1 = rx
-    set udg_bm_RetreatY1 = ry
-    call IssuePointOrder(bm, "smart", rx, ry)
+    set sh = null
 endfunction
 
 // [V52] Combat_AI filter: exclude BM from parent dispatch
@@ -445,8 +493,11 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
                 return
             endif
         endif
-        // 每tick重新下attack指令，咬住目标，覆盖母调度
-        call IssueTargetOrder(bm, "attack", target)
+        // [V52] only re-issue attack if target changed (avoid resetting attack animation)
+        if udg_bm_Target1 != target then
+            call IssueTargetOrder(bm, "attack", target)
+            set udg_bm_Target1 = target
+        endif
         // [V51] forced print: STRIKE target (throttled 1s)
         set udg_bm_AttackPrintCd1 = udg_bm_AttackPrintCd1 + 1
         if udg_bm_AttackPrintCd1 >= 10 then
@@ -466,7 +517,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             call DisplayTextToForce(GetPlayersAll(), "|cff88ccff[BM] WAIT start hp=" + I2S(R2I(curHp)) + "/" + I2S(R2I(maxHp)) + "|r")
             endif
         endif
-        if waitTick <= 3 then
+        if waitTick <= 10 then
             call IssuePointOrder(bm, "smart", udg_bm_RetreatX1, udg_bm_RetreatY1)
             set bm = null
             return
@@ -477,11 +528,34 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             set safeTicks = 0
         endif
         set udg_bm_SafeTicks1 = safeTicks
-        if safeTicks >= 5 then
-            // 撤退结束 -> 检测疾风步状态
+        // [V52] EXECUTE bypass: if BM has windwalk and enemy hero HP<150 (not invul/burrowed), break retreat
+        if GetUnitAbilityLevel(bm, 'Boro') > 0 then
+            set target = Trig_AIML_BM_FindLowestHpHero(enemyP)
+            if target != null then
+                set hp = GetUnitState(target, UNIT_STATE_LIFE)
+                if hp < 150.0 and GetUnitAbilityLevel(target, 'Bvul') == 0 and GetUnitAbilityLevel(target, 'Abur') == 0 then
+                    if udg_aiml_DebugMode then
+                    call DisplayTextToForce(GetPlayersAll(), "|cffff0000[BM] WAIT->EXECUTE bypass! " + GetUnitName(target) + " hp=" + I2S(R2I(hp)) + "|r")
+                    endif
+                    set udg_bm_State1 = 2
+                    set udg_bm_SafeTicks1 = 0
+                    set udg_bm_Target1 = target
+                    set udg_bm_ExecuteTarget1 = target
+                    call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
+                    set target = null
+                    set bm = null
+                    return
+                endif
+                set target = null
+            endif
+        endif
+        // [V52] if HP still < 300, keep retreating towards SH (don't return yet)
+        if safeTicks >= 10 and curHp <= 300.0 then
+            // keep moving towards SH position (RetreatX/Y already set towards SH)
+            call IssuePointOrder(bm, "smart", udg_bm_RetreatX1, udg_bm_RetreatY1)
+        elseif safeTicks >= 10 and curHp > 300.0 then
             set target = Trig_AIML_BM_FindHuntTarget(bm, enemyP)
             if GetUnitAbilityLevel(bm, 'Boro') > 0 and target != null then
-                // 疾风步还在 -> DASH突进
                 if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] WAIT->DASH (Boro on) target=" + GetUnitName(target) + "|r")
                 endif
@@ -490,7 +564,6 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
                 set udg_bm_Target1 = target
                 call IssuePointOrder(bm, "move", GetUnitX(target), GetUnitY(target))
             else
-                // 疾风步没了 -> 平A
                 if udg_aiml_DebugMode then
                 call DisplayTextToForce(GetPlayersAll(), "|cffff8800[BM] WAIT->ATTACK (no Boro)|r")
                 endif
@@ -514,7 +587,10 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
         set udg_bm_SafeTicks1 = safeTicks
         set target = Trig_AIML_BM_FindNearestEnemyInRange(bm, enemyP, 150.0)
         if target != null and GetUnitAbilityLevel(target, 'Abur') == 0 then
-            call IssueTargetOrder(bm, "attack", target)
+            if udg_bm_Target1 != target then
+                set udg_bm_Target1 = target
+                call IssueTargetOrder(bm, "attack", target)
+            endif
         endif
         set bm = null
         return
@@ -647,7 +723,7 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
             if udg_aiml_DebugMode then
             call DisplayTextToForce(GetPlayersAll(), "|cffff00ff[BM] HUNT! target=" + GetUnitName(target) + " hp=" + I2S(R2I(GetUnitState(target, UNIT_STATE_LIFE))) + "|r")
             endif
-            set udg_bm_HuntCooldown1 = 300  // 重置30s冷却
+            set udg_bm_HuntCooldown1 = 100  // 10s cooldown
             // 先判距离：已在100码内则直接进STRIKE平A，节省疾风步CD
             set dx = GetUnitX(target) - GetUnitX(bm)
             set dy = GetUnitY(target) - GetUnitY(bm)
@@ -686,8 +762,10 @@ function Trig_AIML_BM_TickForPlayer takes player myP, player enemyP returns noth
     //         Only HUNT/EXECUTE pick specific targets. BM just hits whatever is next to it.
     set target = Trig_AIML_BM_FindNearestEnemyInRange(bm, enemyP, 150.0)
     if target != null and GetUnitAbilityLevel(target, 'Abur') == 0 then
-        set udg_bm_Target1 = target
-        call IssueTargetOrder(bm, "attack", target)
+        if udg_bm_Target1 != target then
+            set udg_bm_Target1 = target
+            call IssueTargetOrder(bm, "attack", target)
+        endif
     endif
 
     set bm = null
