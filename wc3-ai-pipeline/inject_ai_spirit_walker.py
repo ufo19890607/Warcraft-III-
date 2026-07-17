@@ -18,29 +18,86 @@ import sys
 
 SW_FUNCTIONS = r"""
 //===========================================================================
-// [SPIRIT WALKER] Spell AI - Dispel + Spirit Link (V51d)
+// [SPIRIT WALKER] Spell AI - Dispel + Spirit Link (V52)
 //===========================================================================
 
 
-// Find friendly unit with Curse or Slow buff (hero priority)
-// Returns null if no unit needs dispel
-// Spirit Link buff rawcode is Bspl (not Bslf), Curse debuff is Bcrs (not Bcur)
-function Trig_AIML_SW_FindDispelTarget takes player myP returns unit
+// [V52] Find friendly unit with Silence (BNsi) - highest priority dispel target
+// Returns null if no silenced unit found
+function Trig_AIML_SW_FindSilencedUnit takes player myP returns unit
     local group g = CreateGroup()
     local unit u
     local unit bestHero = null
     local unit bestUnit = null
-    local boolean diagDone = false
     call GroupEnumUnitsOfPlayer(g, myP, null)
     loop
         set u = FirstOfGroup(g)
         exitwhen u == null
         call GroupRemoveUnit(g, u)
         if not IsUnitDeadBJ(u) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) then
-            if not diagDone then
-                set diagDone = true
+            if GetUnitAbilityLevel(u, 'BNsi') > 0 then
+                if IsUnitType(u, UNIT_TYPE_HERO) then
+                    set bestHero = u
+                else
+                    set bestUnit = u
+                endif
             endif
-            if GetUnitAbilityLevel(u, 'Bcrs') > 0 or GetUnitAbilityLevel(u, 'Bslo') > 0 then
+        endif
+    endloop
+    call DestroyGroup(g)
+    set g = null
+    set u = null
+    if bestHero != null then
+        return bestHero
+    endif
+    return bestUnit
+endfunction
+
+// [V52] Find friendly unit with debuff (frost armor slow Bfro, curse Bcrs, slow Bslo)
+// Returns null if no unit needs dispel
+function Trig_AIML_SW_FindDebuffedUnit takes player myP returns unit
+    local group g = CreateGroup()
+    local unit u
+    local unit bestHero = null
+    local unit bestUnit = null
+    call GroupEnumUnitsOfPlayer(g, myP, null)
+    loop
+        set u = FirstOfGroup(g)
+        exitwhen u == null
+        call GroupRemoveUnit(g, u)
+        if not IsUnitDeadBJ(u) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) then
+            if GetUnitAbilityLevel(u, 'Bfro') > 0 or GetUnitAbilityLevel(u, 'Bcrs') > 0 or GetUnitAbilityLevel(u, 'Bslo') > 0 then
+                if IsUnitType(u, UNIT_TYPE_HERO) then
+                    set bestHero = u
+                else
+                    set bestUnit = u
+                endif
+            endif
+        endif
+    endloop
+    call DestroyGroup(g)
+    set g = null
+    set u = null
+    if bestHero != null then
+        return bestHero
+    endif
+    return bestUnit
+endfunction
+
+// [V52] Find enemy unit with beneficial buff (attack scroll Broa, defense scroll Bspo, bloodlust Bblo)
+// Returns null if no enemy buff found
+function Trig_AIML_SW_FindEnemyBuffUnit takes player enemyP returns unit
+    local group g = CreateGroup()
+    local unit u
+    local unit bestHero = null
+    local unit bestUnit = null
+    call GroupEnumUnitsOfPlayer(g, enemyP, null)
+    loop
+        set u = FirstOfGroup(g)
+        exitwhen u == null
+        call GroupRemoveUnit(g, u)
+        if not IsUnitDeadBJ(u) and not IsUnitType(u, UNIT_TYPE_STRUCTURE) then
+            if GetUnitAbilityLevel(u, 'Broa') > 0 or GetUnitAbilityLevel(u, 'Bspo') > 0 or GetUnitAbilityLevel(u, 'Bblo') > 0 then
                 if IsUnitType(u, UNIT_TYPE_HERO) then
                     set bestHero = u
                 else
@@ -90,7 +147,7 @@ function Trig_AIML_SW_FindSpiritLinkTarget takes player myP returns unit
     return bestUnit
 endfunction
 
-// Find a Spirit Walker with enough mana to cast (>= 75)
+// Find a Spirit Walker with enough mana to cast (>= 1, spell cost set to 1 in WE)
 function Trig_AIML_SW_FindCaster takes player myP returns unit
     local group g = CreateGroup()
     local unit u
@@ -101,7 +158,7 @@ function Trig_AIML_SW_FindCaster takes player myP returns unit
         exitwhen u == null
         call GroupRemoveUnit(g, u)
         if not IsUnitDeadBJ(u) and GetUnitTypeId(u) == 'ospw' then
-            if GetUnitState(u, UNIT_STATE_MANA) >= 75.0 then
+            if GetUnitState(u, UNIT_STATE_MANA) >= 1.0 then
                 set sw = u
                 call GroupClear(g)
                 exitwhen true
@@ -115,12 +172,13 @@ function Trig_AIML_SW_FindCaster takes player myP returns unit
 endfunction
 
 // Main tick: called from SalvoTick for each computer player
+
 function Trig_AIML_SW_TickForPlayer takes player myP, player enemyP returns nothing
     local unit sw
     local unit target
 
-    // Phase 1: Dispel (priority)
-    set target = Trig_AIML_SW_FindDispelTarget(myP)
+    // [V52] Phase 1: Dispel Silence (BNsi) on friendly - highest priority
+    set target = Trig_AIML_SW_FindSilencedUnit(myP)
     if target != null then
         set sw = Trig_AIML_SW_FindCaster(myP)
         if sw != null then
@@ -131,7 +189,31 @@ function Trig_AIML_SW_TickForPlayer takes player myP, player enemyP returns noth
         return
     endif
 
-    // Phase 2: Spirit Link
+    // [V52] Phase 2: Dispel debuffs (Bfro/Bcrs/Bslo) on friendly
+    set target = Trig_AIML_SW_FindDebuffedUnit(myP)
+    if target != null then
+        set sw = Trig_AIML_SW_FindCaster(myP)
+        if sw != null then
+            call IssuePointOrder(sw, "dispel", GetUnitX(target), GetUnitY(target))
+        endif
+        set sw = null
+        set target = null
+        return
+    endif
+
+    // [V52] Phase 3: Dispel enemy buffs (Broa/Bspo/Bblo)
+    set target = Trig_AIML_SW_FindEnemyBuffUnit(enemyP)
+    if target != null then
+        set sw = Trig_AIML_SW_FindCaster(myP)
+        if sw != null then
+            call IssuePointOrder(sw, "dispel", GetUnitX(target), GetUnitY(target))
+        endif
+        set sw = null
+        set target = null
+        return
+    endif
+
+    // Phase 4: Spirit Link
     set target = Trig_AIML_SW_FindSpiritLinkTarget(myP)
     if target != null then
         set sw = Trig_AIML_SW_FindCaster(myP)
