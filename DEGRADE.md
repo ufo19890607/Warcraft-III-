@@ -846,3 +846,73 @@ V40 守卫在 Round 1 `Round1Mode >= 1` 时跳过军团攻击指令 -> `ospw` �
 | 减速 | Bslo | 待确认 |
 
 建议后续新建一个 `buff_rawcode_registry.py` 统一管理本图所有已确认的 buff rawcode，避免散落在各注入脚本中。
+
+
+## Pit 29: Silence buff rawcode is BNsi (not Bsil/Bshs)
+
+**Found**: 2026-07-17
+
+**Symptom**: BM could not detect silence status. Standard Bsil and Bshs
+both returned 0 when Dark Ranger casts Silence on BM.
+
+**Root cause**: Custom map uses non-standard buff rawcode for silence.
+Same pattern as Bvul/Bspl/Bcrs (pits 23/28).
+
+**Working buff ID**: BNsi - confirmed via per-tick buff scan (203 IDs)
+
+**Fix**: BM EXECUTE/HUNT entry checks GetUnitAbilityLevel(bm, 'BNsi') > 0
+-> skip to NORMAL fallback (attack nearest enemy, no windwalk)
+
+## Pit 30: Burrow buff rawcode is Abur (ability, not buff Bbur)
+
+**Found**: 2026-07-17
+
+**Symptom**: BM stuck in STRIKE attacking burrowed Crypt Fiend that
+cannot be hit. IsUnitDeadBJ returns false, Bvul returns 0, so STRIKE
+never releases.
+
+**Root cause**: Crypt Fiend burrow gives Abur ability (not Bbur buff).
+1.27 has no UNIT_TYPE_SUBMERGED constant.
+
+**Working ID**: Abur - confirmed via [BM-BURROW] diagnostic scan
+
+**Fix**: STRIKE/FindNearestEnemy/NORMAL fallback all check
+GetUnitAbilityLevel(target, 'Abur') > 0 -> skip/release
+
+## Pit 31: BM attack animation stutter from per-tick IssueTargetOrder
+
+**Found**: 2026-07-18
+
+**Symptom**: BM attacks look stuttery, animation resets frequently.
+
+**Root cause**: BM Tick (0.1s) calls IssueTargetOrder(bm, "attack", target)
+every tick even when target hasn't changed. WC3 engine resets attack
+animation on repeated attack orders to the same target.
+
+**Fix**: Only IssueTargetOrder when udg_bm_Target1 != target (target changed).
+
+## Pit 32: Combat_AI overrides BM commands (parent dispatch interference)
+
+**Found**: 2026-07-18
+
+**Symptom**: BM attack animations disrupted even after V52 stutter fix.
+
+**Root cause**: Computer1/2Combat_AI runs every 1s, issues "attack random
+enemy position" to ALL non-base units including BM (Obla). This overrides
+BM Tick commands every 1s.
+
+**Fix**: Patch Trig_Computer1Combat_AI_Func001001002 and
+Trig_Computer2Combat_AI_Func002001002 to exclude Blademaster
+(GetUnitTypeId != 'Obla'). BM fully controlled by own 0.1s tick.
+
+## Confirmed buff/ability rawcodes on this custom map (updated)
+
+| Buff/Ability | Standard | This map | Pit |
+|------|------|------|------|
+| Invulnerable | Bvul | Bvul | 23 |
+| Spirit Link | Bslf | Bspl | 28 |
+| Curse | Bcur | Bcrs | 28 |
+| Silence | Bsil/Bshs | BNsi | 29 |
+| Burrow | Bbur | Abur | 30 |
+| Frost Armor slow | Bfro | Bfro | - |
+| Slow | Bslo | Bslo (assumed) | - |

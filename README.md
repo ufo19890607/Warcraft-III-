@@ -3,9 +3,32 @@
 
 ![项目架构总览](docs/architecture.png)
 
-## 当前基线版本：V51d
+## 当前基线版本：V52
 
-V51d 引入灵魂行者独立施法 AI（驱散 + 灵魂链）+ BM 目标选择解耦 + 150 码就近攻击。
+V52 引入 BM 沉默检测 + SW 三级驱散 + 钻地检测 + 母调度排除 + WAIT 撤退重做 + 攻击卡顿修复。
+
+### V52 BM 沉默检测 + SW 驱散扩展 + 钻地检测 (2026-07-17)
+
+- **BM 沉默检测 (BNsi)**：被沉默时跳过 EXECUTE/HUNT，只走 NORMAL fallback 平 A
+- **BM 钻地检测 (Abur)**：STRIKE 目标钻地时释放回 NORMAL，FindNearestEnemy 跳过钻地单位
+- **SW 三级驱散优先级**：沉默(BNsi) > debuff(Bfro/Bcrs/Bslo) > 敌方增益(Broa/Bspo/Bblo) > 灵魂链(Bspl)
+- **SW mana 放宽**：75 -> 1（WE 里改了耗蓝）
+
+### V52 母调度排除 BM + 攻击卡顿修复 (2026-07-17)
+
+- **Combat_AI 过滤排除 BM**：patch Func001001002/Func002001002，母调度不再给 BM 下 attack 指令
+- **NORMAL 冷却也下指令**：冷却时 attack 150 码最近敌人，不空窗
+- **攻击卡顿修复**：只在目标变化时 IssueTargetOrder，不打断攻击动画
+- **HuntCooldown**：30s -> 10s
+- **SH 移出 Salvo**：Oshd 从 RANGED_HEROES 移除（同 Ofar，防止打断施法）
+
+### V52 WAIT 撤退重做 (2026-07-18)
+
+- **强制撤退**：0.3s -> 1s（10 tick）
+- **常规反打**：1s 安全 + HP>300
+- **EXECUTE 破例返回**：疾风步 + 敌方 HP<150 + 非无敌/钻地 -> 立即 DASH 斩杀
+- **撤退朝向 SH**：UpdateRetreat 朝己方暗影猎手跑（等治疗），不再只远离敌方
+- **HP<300 持续撤退**：1s 后 HP 仍低于 300 继续朝 SH 跑
 
 ### V51d 灵魂行者独立施法 AI (2026-07-16)
 
